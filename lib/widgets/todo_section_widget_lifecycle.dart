@@ -111,7 +111,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
   void didUpdateWidget(TodoSectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final nextSignature = _computeViewModelSignature(today);
     final inputListsChanged =
         oldWidget.todos != widget.todos ||
@@ -147,7 +147,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     ChatUsageSummary? initialVoiceUsageSummary,
   }) async {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
 
     await AiTodoChatLauncher.open(
       context,

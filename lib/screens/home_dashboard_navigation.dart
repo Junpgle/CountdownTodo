@@ -178,7 +178,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         title: data['title']?.toString() ?? data['content']?.toString() ?? '',
         remark: (data['remark'] ?? data['notes'] ?? data['note'])?.toString(),
         dueDate: normalizedTime.due,
-        createdDate: normalizedTime.start?.toUtc().millisecondsSinceEpoch,
+        createdDate: AppTimeFormats.toNullableServerTimestamp(
+          normalizedTime.start,
+        ),
         createdAt: DateTime.now().millisecondsSinceEpoch,
         recurrence: parseRecurrence(data['recurrence']),
         customIntervalDays: parseInt(

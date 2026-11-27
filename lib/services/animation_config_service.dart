@@ -30,7 +30,14 @@ class AnimationConfigService {
   static const String _keyEnableMotionBlur = 'enable_motion_blur';
   static const String _keyEnableLayerBlur = 'enable_layer_blur';
   static const String _keyEnableLazyLoad = 'enable_lazy_load';
+  static const String _keyEnableSkeletonScreen = 'enable_skeleton_screen';
   static const String _keyEnableScreenRadius = 'enable_screen_radius';
+
+  static ValueListenable<bool> get skeletonScreenEnabledListenable =>
+      PageTransitions.skeletonScreenEnabledNotifier;
+
+  static bool get skeletonScreenEnabled =>
+      PageTransitions.skeletonScreenEnabledNotifier.value;
   static const String _keyEnablePredictiveBack = 'enable_predictive_back';
   static const String _keyAnimationDuration = 'animation_duration';
   static const String _keyPageLayerDepth = 'page_layer_depth';
@@ -59,6 +66,7 @@ class AnimationConfigService {
       _keyEnableMotionBlur,
       _keyEnableLayerBlur,
       _keyEnableLazyLoad,
+      _keyEnableSkeletonScreen,
       _keyEnableScreenRadius,
       _keyEnablePredictiveBack,
       _keyAnimationDuration,
@@ -86,6 +94,13 @@ class AnimationConfigService {
   static Future<bool> isLazyLoadEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyEnableLazyLoad) ?? true;
+  }
+
+  static Future<bool> isSkeletonScreenEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool(_keyEnableSkeletonScreen) ?? true;
+    PageTransitions.skeletonScreenEnabledNotifier.value = enabled;
+    return enabled;
   }
 
   static Future<bool> isScreenRadiusEnabled() async {
@@ -153,6 +168,7 @@ class AnimationConfigService {
           _keyEnableMotionBlur: false,
           _keyEnableLayerBlur: false,
           _keyEnableLazyLoad: true,
+          _keyEnableSkeletonScreen: true,
           _keyEnableScreenRadius: true,
           _keyEnablePredictiveBack: true,
           _keyAnimationDuration: 220,
@@ -166,6 +182,7 @@ class AnimationConfigService {
           _keyEnableMotionBlur: false,
           _keyEnableLayerBlur: false,
           _keyEnableLazyLoad: true,
+          _keyEnableSkeletonScreen: true,
           _keyEnableScreenRadius: true,
           _keyEnablePredictiveBack: true,
           _keyAnimationDuration: 320,
@@ -179,6 +196,7 @@ class AnimationConfigService {
           _keyEnableMotionBlur: true,
           _keyEnableLayerBlur: true,
           _keyEnableLazyLoad: false,
+          _keyEnableSkeletonScreen: true,
           _keyEnableScreenRadius: true,
           _keyEnablePredictiveBack: true,
           _keyAnimationDuration: 500,
@@ -197,6 +215,7 @@ class AnimationConfigService {
         await prefs.setInt(entry.key, value);
       }
     }
+    PageTransitions.skeletonScreenEnabledNotifier.value = true;
 
     // 液态玻璃跟随性能档位：性能档关闭；均衡档标准玻璃；完整动效档增强玻璃。
     switch (preset) {
@@ -237,6 +256,14 @@ class AnimationConfigService {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnableLazyLoad, value);
+    await PageTransitions.init();
+  }
+
+  static Future<void> setSkeletonScreenEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
+    await prefs.setBool(_keyEnableSkeletonScreen, value);
+    PageTransitions.skeletonScreenEnabledNotifier.value = value;
     await PageTransitions.init();
   }
 

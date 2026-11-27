@@ -151,7 +151,7 @@ class MissedPlanRecoveryService {
     final deadline = due == null
         ? null
         : todo.isDateOnly
-        ? DateTime(due.year, due.month, due.day + 1)
+        ? AppTimeFormats.localDayStartOffset(due, 1)
         : due;
     if (deadline != null && !deadline.isAfter(now)) {
       throw MissedPlanRecoveryException('待办截止已过，请先调整截止后再重新安排', todo: todo);

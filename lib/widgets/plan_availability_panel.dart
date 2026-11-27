@@ -10,7 +10,6 @@ import 'dart:convert';
 import 'plan_buffer_controls.dart';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
@@ -20,16 +19,8 @@ import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
-
-final Map<(String?, String), DateFormat> _planAvailabilityDateFormats = {};
-
-DateFormat _planAvailabilityDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planAvailabilityDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class _PlanSplitRequest {
   const _PlanSplitRequest(this.query);
@@ -286,7 +277,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     });
   }
 
-  DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+  DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
   String _preferenceKey(
     List<PlanDailyTimeWindow> options,
@@ -474,9 +465,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
           }
         });
         widget.onQueryChanged?.call(_query);
-        ScaffoldMessenger.of(
+        AppSnackBars.showSnackBar(
           context,
-        ).showSnackBar(const SnackBar(content: Text('本次查找已使用，默认设置未能记住，请重试')));
+          const SnackBar(content: Text('本次查找已使用，默认设置未能记住，请重试')),
+        );
       }),
     );
   }
@@ -930,8 +922,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _invalidate();
   }
 
-  String _hhmm(int minutes) =>
-      '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
+  String _hhmm(int minutes) => AppTimeFormats.minuteOfDay(minutes);
 
   String _sourceLabel(PlanBusySource source) => switch (source) {
     PlanBusySource.course => '课程',
@@ -993,14 +984,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${_planAvailabilityDateFormat('HH:mm').format(slot.start)}–${_planAvailabilityDateFormat('HH:mm').format(slot.end)}',
+                    '${AppTimeFormats.dateFormatter('HH:mm').format(slot.start)}–${AppTimeFormats.dateFormatter('HH:mm').format(slot.end)}',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${_planAvailabilityDateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
+                    '${AppTimeFormats.dateFormatter('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -1061,7 +1052,6 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       context: context,
       builder: (dialogContext) {
         dialogRoute = ModalRoute.of(dialogContext);
-        final media = MediaQuery.of(dialogContext);
         return Dialog(
           key: const ValueKey('plan-custom-search-dialog'),
           insetPadding: const EdgeInsets.symmetric(
@@ -1072,9 +1062,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
             constraints: BoxConstraints(
               maxWidth: 620,
               maxHeight:
-                  (media.size.height -
-                          media.viewInsets.bottom -
-                          media.padding.vertical -
+                  (MediaQuery.sizeOf(dialogContext).height -
+                          MediaQuery.viewInsetsOf(dialogContext).bottom -
+                          MediaQuery.paddingOf(dialogContext).vertical -
                           48)
                       .clamp(0.0, double.infinity),
             ),
@@ -1170,8 +1160,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       await PlanAvailabilityPreferences.validateQueryDefaults(selection.query);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$error')));
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text('$error')));
       }
       return;
     }
@@ -1187,8 +1176,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
           selection.snapshot,
           now: _now,
         )) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('安排已变化，请重新选择推荐时段')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('安排已变化，请重新选择推荐时段')),
+      );
       return;
     }
     final query = selection.query;
@@ -1513,10 +1504,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                             key: ValueKey('plan-date-shortcut-$offset'),
                             onPressed: () {
                               final today = _day(_now);
-                              _date = DateTime(
-                                today.year,
-                                today.month,
-                                today.day + offset,
+                              _date = AppTimeFormats.localDayStartOffset(
+                                today,
+                                offset,
                               );
                               _invalidate();
                               widget.onDateChanged?.call(_date);
@@ -1542,7 +1532,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                           size: 18,
                         ),
                         label: Text(
-                          _planAvailabilityDateFormat('yyyy-MM-dd')
+                          AppTimeFormats.dateFormatter('yyyy-MM-dd')
                               .format(_date),
                         ),
                       ),
@@ -1722,8 +1712,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           _snapshot!.todo.isDateOnly
-                              ? '须在 ${_planAvailabilityDateFormat('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
-                              : '须在 ${_planAvailabilityDateFormat('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
+                              ? '须在 ${AppTimeFormats.dateFormatter('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
+                              : '须在 ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
@@ -1747,7 +1737,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  '${_sourceLabel(item.source)} · ${_planAvailabilityDateFormat('MM-dd HH:mm').format(item.start)}–${_planAvailabilityDateFormat('MM-dd HH:mm').format(item.end)}',
+                                  '${_sourceLabel(item.source)} · ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(item.start)}–${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(item.end)}',
                                   style: theme.textTheme.bodySmall,
                                 ),
                               ),

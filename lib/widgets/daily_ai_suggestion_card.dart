@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../services/daily_ai_suggestion_service.dart';
-import '../utils/app_image_filters.dart';
 import 'ai_water_border.dart';
 import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
-import 'platform_backdrop_filter.dart';
 
 class DailyAiSuggestionCard extends StatelessWidget {
   final DailyAiSuggestionSnapshot snapshot;
@@ -202,42 +200,37 @@ class DailyAiSuggestionCard extends StatelessWidget {
             isLight: isLight,
             visibleOnlyWhenInViewport: true,
             borderRadius: BorderRadius.circular(24),
-            child: PlatformBackdropFilter(
-              filter: AppImageFilters.blur10,
-              bypassWhenLiquidGlassEnabled: true,
-              clipBorderRadius: BorderRadius.circular(24),
-              child: OptionalLiquidGlassCard(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                borderRadius: 24,
-                tint: scheme.primary.withValues(alpha: 0.08),
-                isDark: isDark,
-                fallbackDecoration: BoxDecoration(
+            child: OptionalLiquidGlassCard(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              borderRadius: 24,
+              tint: scheme.primary.withValues(alpha: 0.08),
+              isDark: isDark,
+              fallbackDecoration: BoxDecoration(
+                color: isLight
+                    ? (isDark
+                          ? scheme.surfaceContainerLow.withValues(alpha: 0.78)
+                          : scheme.surface.withValues(alpha: 0.9))
+                    : scheme.surfaceContainerHighest.withValues(
+                        alpha: isDark ? 0.35 : 0.45,
+                      ),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
                   color: isLight
                       ? (isDark
-                            ? scheme.surfaceContainerLow.withValues(alpha: 0.78)
-                            : scheme.surface.withValues(alpha: 0.9))
-                      : scheme.surfaceContainerHighest.withValues(
-                          alpha: isDark ? 0.35 : 0.45,
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.6))
+                      : scheme.outlineVariant.withValues(
+                          alpha: isDark ? 0.25 : 0.4,
                         ),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: isLight
-                        ? (isDark
-                              ? Colors.white.withValues(alpha: 0.15)
-                              : Colors.white.withValues(alpha: 0.6))
-                        : scheme.outlineVariant.withValues(
-                            alpha: isDark ? 0.25 : 0.4,
-                          ),
-                  ),
                 ),
-                child: _buildBody(
-                  context,
-                  scheme: scheme,
-                  isDark: isDark,
-                  suggestion: suggestion,
-                  isExpanded: isExpanded,
-                ),
+              ),
+              child: _buildBody(
+                context,
+                scheme: scheme,
+                isDark: isDark,
+                suggestion: suggestion,
+                isExpanded: isExpanded,
               ),
             ),
           ),

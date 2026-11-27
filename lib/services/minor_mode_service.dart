@@ -8,6 +8,7 @@ import '../models/minor_age_signal_state.dart';
 import '../models/minor_mode_state.dart';
 import '../utils/app_platform.dart';
 import 'minor_mode_policy.dart';
+import '../utils/calendar_date_math.dart';
 
 class MinorModeService with WidgetsBindingObserver {
   MinorModeService._();
@@ -121,7 +122,7 @@ class MinorModeService with WidgetsBindingObserver {
     await initialize();
     final normalized = birthDate == null
         ? null
-        : DateTime(birthDate.year, birthDate.month, birthDate.day);
+        : CalendarDateMath.dateOnly(birthDate);
     final prefs = await SharedPreferences.getInstance();
     if (normalized == null) {
       await prefs.remove(manualBirthDateKey);
@@ -343,7 +344,7 @@ class MinorModeService with WidgetsBindingObserver {
       if (raw == null || raw.isEmpty) return null;
       final parsed = DateTime.tryParse(raw);
       if (parsed == null) return null;
-      return DateTime(parsed.year, parsed.month, parsed.day);
+      return CalendarDateMath.dateOnly(parsed);
     } catch (_) {
       return manualBirthDate;
     }

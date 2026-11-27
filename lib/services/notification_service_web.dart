@@ -6,10 +6,14 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import 'storage/app_settings_storage.dart';
+import '../utils/time_utils.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
-import 'plan_reminder_guard.dart';
+import 'countdown_reminder_helper.dart';
+import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
+import '../utils/json_value_parser.dart';
+import '../utils/text_utils.dart';
 
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
@@ -192,7 +196,7 @@ class NotificationService {
     final due = todo.dueDate?.toLocal();
     final timeText = due == null
         ? '即将开始'
-        : '${due.month}/${due.day} ${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}';
+        : '${due.month}/${due.day} ${AppTimeFormats.clock(due)}';
     final remark = todo.remark?.trim();
     return _showLiveActivityNotification(
       todo.title,
@@ -202,14 +206,22 @@ class NotificationService {
   }
 
   static int countdownLiveNotifId(String countdownId) =>
-      71001 + (countdownId.hashCode.abs() % 999);
+      CountdownReminderHelper.liveNotificationId(countdownId);
 
-  static Future<bool> showCountdownLiveActivity(CountdownItem countdown) async {
+  static Future<bool> showCountdownLiveActivity(
+    CountdownItem countdown, {
+    DateTime? now,
+  }) async {
     if (countdown.isDeleted || countdown.isCompleted) return false;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
       return false;
     }
     if (!await AppSettingsStorage.isCountdownNotificationEnabled()) {
+      return false;
+    }
+    final targetLocal = countdown.targetDate.toLocal();
+    final dateStr = AppTimeFormats.date(targetLocal);
+    if (await CountdownReminderPrefs.isDismissed(countdown.id, dateStr)) {
       return false;
     }
     final category = ItemSemanticsService.countdownCategoryForTitle(
@@ -358,6 +370,26 @@ class NotificationService {
     _scheduledReminders.remove(notifId);
   }
 
+  static Future<List<String>> getPendingCompletedCountdowns() async =>
+      const <String>[];
+
+  static Future<void> acknowledgeCompletedCountdowns(List<String> ids) async {}
+
+  static Future<void> markCountdownDismissed({
+    required String countdownId,
+    required String dateStr,
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.markDismissed(countdownId, dateStr);
+  }
+
+  static Future<void> clearCountdownReminderState(
+    String countdownId, {
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.clearForCountdown(countdownId);
+  }
+
   /// Kept for API parity with native platforms. Browser reminder callbacks
   /// re-check the current DND state at fire time, so no timer recreation is
   /// necessary when the state changes.
@@ -396,9 +428,7 @@ class NotificationService {
   }) async {
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
-    final body = errorMsg.length > 80
-        ? '${errorMsg.substring(0, 80)}...'
-        : errorMsg;
+    final body = AppTextUtils.truncate(errorMsg, 80, ellipsis: '...');
     await _showLiveActivityNotification('图片识别失败', body, tag: 'todo-recognize');
   }
 
@@ -467,65 +497,7 @@ class NotificationService {
 
   static Future<List<Map<String, dynamic>>> _filterScheduledReminders(
     Iterable<Map<String, dynamic>> reminders,
-  ) async {
-    final liveActivityEnabled =
-        await AppSettingsStorage.isLiveActivityNotificationEnabled();
-    final reminderEnabled =
-        await AppSettingsStorage.isReminderNotificationEnabled();
-    final courseEnabled =
-        await AppSettingsStorage.isCourseNotificationEnabled();
-    final todoLiveEnabled =
-        await AppSettingsStorage.isTodoLiveNotificationEnabled();
-    final specialTodoEnabled =
-        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
-    final countdownEnabled =
-        await AppSettingsStorage.isCountdownNotificationEnabled();
-    final financeEnabled =
-        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
-    final pomodoroEndEnabled =
-        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
+  ) => NotificationServiceShared.filterScheduledReminders(reminders);
 
-    return PlanReminderGuard.filterSchedulablePlanReminders(
-      reminders
-          .where((reminder) {
-            final source = ScheduledReminderRegistry.sourceOf(reminder);
-            final type = reminder['type']?.toString();
-            if (FocusDoNotDisturbService.isActive &&
-                source != ScheduledReminderSources.pomodoro &&
-                type != 'pomodoro' &&
-                type != 'pomodoro_end') {
-              return false;
-            }
-            if (source == ScheduledReminderSources.pomodoro ||
-                type == 'pomodoro' ||
-                type == 'pomodoro_end') {
-              return pomodoroEndEnabled;
-            }
-            if (!reminderEnabled) return false;
-            switch (type) {
-              case 'course':
-                return liveActivityEnabled && courseEnabled;
-              case 'upcoming_todo':
-                return liveActivityEnabled && todoLiveEnabled;
-              case 'special_todo':
-                return liveActivityEnabled && specialTodoEnabled;
-              case 'countdown':
-                return liveActivityEnabled && countdownEnabled;
-              case 'finance_recurring':
-                return financeEnabled;
-              default:
-                return true;
-            }
-          })
-          .map(Map<String, dynamic>.from)
-          .toList(growable: false),
-    );
-  }
-
-  static int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value);
-    return null;
-  }
+  static int? _readInt(dynamic value) => JsonValueParser.toNullableInt(value);
 }

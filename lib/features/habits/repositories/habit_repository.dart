@@ -6,6 +6,7 @@ import '../../../models.dart';
 import '../../../services/storage/habit_storage.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../storage_service.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -13,6 +14,7 @@ import '../services/habit_adaptation_service.dart';
 import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 习惯业务门面：目标、规则版本与打卡的统一入口。
 ///
@@ -362,7 +364,7 @@ abstract final class HabitRepository {
           HabitCheckIn(
             habitUuid: goal.uuid,
             ruleRevisionUuid: rule.uuid,
-            occurredAt: localOccurred.toUtc().millisecondsSinceEpoch,
+            occurredAt: AppTimeFormats.toServerTimestamp(localOccurred),
             logicalDate: dayKey,
             timezoneOffsetMinutes: localOccurred.timeZoneOffset.inMinutes,
             value: 1,
@@ -384,7 +386,7 @@ abstract final class HabitRepository {
           HabitCheckIn(
             habitUuid: goal.uuid,
             ruleRevisionUuid: rule.uuid,
-            occurredAt: localOccurred.toUtc().millisecondsSinceEpoch,
+            occurredAt: AppTimeFormats.toServerTimestamp(localOccurred),
             logicalDate: dayKey,
             timezoneOffsetMinutes: localOccurred.timeZoneOffset.inMinutes,
             value: 0,
@@ -458,7 +460,7 @@ abstract final class HabitRepository {
     final ms = todo.createdDate ?? todo.createdAt;
     if (ms <= 0) return null;
     final local = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(local);
   }
 
   static Future<String> _resolveUsername([String username = '']) async {
@@ -705,7 +707,7 @@ abstract final class HabitRepository {
     final checkIn = HabitCheckIn(
       habitUuid: goal.uuid,
       ruleRevisionUuid: rule.uuid,
-      occurredAt: localOccurredAt.toUtc().millisecondsSinceEpoch,
+      occurredAt: AppTimeFormats.toServerTimestamp(localOccurredAt),
       logicalDate: HabitRuleResolver.dayKey(
         HabitRuleResolver.logicalDateFor(
           localOccurredAt,
@@ -922,10 +924,7 @@ abstract final class HabitRepository {
                   targetValue: 1,
                 ));
       final now = DateTime.now();
-      final isToday =
-          now.year == logicalDate.year &&
-          now.month == logicalDate.month &&
-          now.day == logicalDate.day;
+      final isToday = AppTimeFormats.isSameDay(now, logicalDate);
       final occurredAt = isToday
           ? now
           : DateTime(logicalDate.year, logicalDate.month, logicalDate.day, 12);

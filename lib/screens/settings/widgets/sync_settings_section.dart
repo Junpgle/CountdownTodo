@@ -8,9 +8,10 @@ import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
-import '../../../widgets/app_state_views.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../server_choice_page.dart';
+import '../../../utils/app_dialogs.dart';
 import '../pages/sync_health_page.dart';
 
 class SyncSettingsSection extends StatefulWidget {
@@ -28,7 +29,8 @@ class SyncSettingsSection extends StatefulWidget {
   State<SyncSettingsSection> createState() => _SyncSettingsSectionState();
 }
 
-class _SyncSettingsSectionState extends State<SyncSettingsSection> {
+class _SyncSettingsSectionState extends State<SyncSettingsSection>
+    with SettingsTargetHighlightMixin<SyncSettingsSection> {
   final Map<String, GlobalKey> _itemKeys = {
     'sync_interval': GlobalKey(),
     'offline_mode': GlobalKey(),
@@ -37,6 +39,9 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     'server_choice': GlobalKey(),
     'llm_retry': GlobalKey(),
   };
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   bool _isLoading = true;
   int _syncInterval = 0;
@@ -84,24 +89,13 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
         _llmRetryCount = llmRetryCount;
         _isLoading = false;
       });
-      if (widget.initialTarget != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToTarget(widget.initialTarget!);
-        });
-      }
+      scheduleInitialSettingsTarget(
+        widget.initialTarget,
+        highlight: false,
+        scrollDuration: const Duration(milliseconds: 450),
+        alignment: 0.12,
+      );
     }
-  }
-
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    final targetContext = key?.currentContext;
-    if (targetContext == null) return;
-    Scrollable.ensureVisible(
-      targetContext,
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeInOut,
-      alignment: 0.12,
-    );
   }
 
   Future<void> _setConflictDetectionEnabled(bool enabled) async {
@@ -117,7 +111,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
 
   Future<void> _setOfflineModeEnabled(bool enabled) async {
     if (enabled) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (dialogContext) {
           final colorScheme = Theme.of(dialogContext).colorScheme;
@@ -138,16 +132,25 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   SizedBox(height: 10),
-                  Text('• 将关闭/断开：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    '• 将关闭/断开：',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   Text('  - 主动断开 WebSocket 实时同步通道'),
                   Text('  - 暂停待办、习惯、专注、课程表、计划、记账等数据的云端服务器同步'),
                   Text('  - 禁用手动同步中的云端服务器同步入口'),
                   SizedBox(height: 8),
-                  Text('• 以下功能将无法使用：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    '• 以下功能将无法使用：',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   Text('  - 跨公网的多设备实时同步与云端数据备份/恢复'),
                   Text('  - 团队协作、共享空间及在线番茄钟多端实时状态同步'),
                   SizedBox(height: 8),
-                  Text('• 仍保留的功能：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    '• 仍保留的功能：',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   Text('  - 账号登录态、版本更新检查与系统公告'),
                   Text('  - 同一局域网下的设备互传与局域网同步（遵循上方自动同步频率）'),
                 ],
@@ -181,7 +184,10 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return const AppLoadingView();
+      return const Padding(
+        padding: EdgeInsets.only(top: 16),
+        child: AppSkeletonSettingsSection(rows: 3),
+      );
     }
 
     return AppSettingsSection(

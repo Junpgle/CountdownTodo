@@ -1132,11 +1132,7 @@ class CourseService {
         }
         if (courseDay == null) continue;
 
-        final normalizedDay = DateTime(
-          courseDay.year,
-          courseDay.month,
-          courseDay.day,
-        );
+        final normalizedDay = CalendarDateMath.dateOnly(courseDay);
         if (normalizedDay.isAfter(tomorrowNormalized)) {
           if (nextDay == null || normalizedDay.isBefore(nextDay)) {
             nextDay = normalizedDay;

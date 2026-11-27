@@ -39,7 +39,6 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
   Map<int, List<FixedScheduleItem>> _fixedSchedulesPerDay = {};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   final Set<String> _activeDataViews = {
     'courses',
     'fixedSchedules',
@@ -52,14 +51,6 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   String _weekPerspective = 'all'; // 'all' | 'schedule' | 'review' | 'custom'
   bool get _isReviewPerspective => _weekPerspective == 'review';
   bool _collapseFreeTime = true;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
@@ -198,6 +189,10 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<String, List<DeviceCalendarEvent>> _monthDeviceCalendarMap = {};
   bool _monthDataPrepared = false;
   final int _maxExpandedSpanDays = 366;
+  final _todoIndexCache = _IdentityIndexCache<TodoItem>();
+  final _timeLogIndexCache = _IdentityIndexCache<TimeLogItem>();
+  final _pomodoroIndexCache = _IdentityIndexCache<PomodoroRecord>();
+  final _courseIndexCache = _IdentityIndexCache<CourseItem>();
   void initState();
   void dispose();
   Future<void> _loadData();
@@ -207,18 +202,17 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   DateTime? _fixedScheduleDate(FixedScheduleItem item) {
     final parsed = DateTime.tryParse(item.date);
     if (parsed == null) return null;
-    return DateTime(parsed.year, parsed.month, parsed.day);
+    return CalendarDateMath.dateOnly(parsed);
   }
 
   String _fixedScheduleTimeLabel(FixedScheduleItem item) {
     if (item.startTime == null) return '时间待定';
-    final timeFormat = _cachedDateFormat('HH:mm');
     final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
     if (item.endTime == null) {
-      return '${timeFormat.format(start)} · 结束待定';
+      return '${AppTimeFormats.clock(start)} · 结束待定';
     }
     final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!);
-    return '${timeFormat.format(start)} - ${timeFormat.format(end)}';
+    return AppTimeFormats.range(start, end);
   }
 
   String _formatEventDuration(int seconds) {
@@ -316,6 +310,36 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   double _mapTimeToVirtualMinutes(int hour, int minute);
   double _timeToY(int hour, int minute, double minuteHeight);
   Color _getCourseColor(String courseName);
+  Color _harmonizeWeekEventColor(
+    Color rawColor, {
+    double opacity = 0.85,
+    double maxSaturation = 0.52,
+  });
+  Color get _weekLazyLoadPlaceholderColor;
+  ({int titleMaxLines, int subMaxLines, bool showSubtitle})
+  _computeCardTextLayout({
+    required String title,
+    required String? subtitle,
+    required double width,
+    required double height,
+    required double effectiveHeight,
+    required double titleFontSize,
+    required double subFontSize,
+    double extraReservedHeight = 0.0,
+    double horizontalPadding = 6.0,
+  });
+  void _showAggregatedTimelineSheet(
+    BuildContext context,
+    int weekday,
+    List<Object> items,
+  );
+  void _collectTodoGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectTimeLogGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectPlanBlockGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectFixedScheduleGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectPomodoroGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectDeviceCalendarGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectCourseGridEvents(_WeeklyGridLayerContext ctx);
   void _showAllDayTodos(
     BuildContext context,
     List<TodoItem> todos,

@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../utils/android_energy_policy.dart';
-import '../utils/app_platform.dart';
 import '../utils/app_image_filters.dart';
-import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/time_utils.dart';
+import 'platform_backdrop_filter.dart';
 
 class StickyAnnouncementBanner extends StatefulWidget {
   final TeamAnnouncement announcement;
@@ -264,28 +263,10 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: AppPlatform.isWindows || isDark
-            ? bannerContent
-            : ListenableBuilder(
-                listenable: Listenable.merge(<Listenable>[
-                  LiquidGlassEffectService.configurationListenable,
-                  PowerSaveModeService.enabledListenable,
-                ]),
-                builder: (context, child) {
-                  final skipBlur =
-                      PowerSaveModeService.isEnabled ||
-                      !LiquidGlassEffectService.configuration.enabled;
-                  return skipBlur
-                      ? child!
-                      : BackdropFilter.grouped(
-                          filter: AppImageFilters.blur10,
-                          child: child,
-                        );
-                },
-                child: bannerContent,
-              ),
+      child: PlatformBackdropFilter(
+        filter: AppImageFilters.blur10,
+        clipBorderRadius: BorderRadius.circular(24),
+        child: bannerContent,
       ),
     );
   }

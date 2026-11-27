@@ -3,7 +3,6 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 import '../course_import/course_schedule_semantics.dart';
 import '../services/course_service.dart';
@@ -28,7 +27,9 @@ import '../utils/todo_recurrence_calendar_index.dart';
 import '../services/feature_tip_service.dart';
 import '../services/device_calendar_read_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/app_sheet_widgets.dart';
 import '../widgets/floating_glass_control.dart';
+import '../utils/text_utils.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 
@@ -36,6 +37,10 @@ part 'course_screens_contract.dart';
 part 'course_screens_lifecycle.dart';
 part 'course_screens_navigation.dart';
 part 'course_screens_grid.dart';
+part 'course_screens_grid_indexes.dart';
+part 'course_screens_grid_header.dart';
+part 'course_screens_grid_layers_foreground.dart';
+part 'course_screens_grid_layers_background.dart';
 part 'course_screens_view.dart';
 part 'course_detail_screens.dart';
 
@@ -113,5 +118,8 @@ class _WeeklyCourseScreenState extends _WeeklyCourseScreenStateBase
     with
         _WeeklyCourseLifecycle,
         _WeeklyCourseNavigation,
+        _WeeklyCourseGridHeader,
+        _WeeklyCourseGridForegroundLayers,
+        _WeeklyCourseGridBackgroundLayers,
         _WeeklyCourseGrid,
         _WeeklyCourseView {}

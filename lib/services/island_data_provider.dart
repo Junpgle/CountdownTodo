@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'island_slot_provider.dart';
@@ -194,12 +193,11 @@ class IslandDataProvider {
     // Safety fallbacks if priority list doesn't include enough items with data
     if (leftStr.isEmpty) {
       final now = DateTime.now();
-      leftStr = DateFormat('M月d日').format(now);
+      leftStr = AppTimeFormats.format(now, 'M月d日');
     }
     if (rightStr.isEmpty && leftSlotData.type != 'weekday') {
       final now = DateTime.now();
-      final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-      rightStr = weekdays[now.weekday - 1];
+      rightStr = AppTimeFormats.weekdayLabel(now);
     }
 
     // TopBar overrides

@@ -18,22 +18,129 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CountDownTodo">
   <meta name="msapplication-TileColor" content="#6C63FF">
-  <link rel="apple-touch-icon" href="icons/Icon-180.png">
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="icons/Icon-16.png">
-
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json">
-
-  <!-- Warm up key origins used by login verification and sync. -->
-  <link rel="preconnect" href="https://api-cdt.junpgle.me" crossorigin>
-  <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
-  <link rel="dns-prefetch" href="https://api-cdt.junpgle.me">
-  <link rel="dns-prefetch" href="https://challenges.cloudflare.com">
 
   <title>CountDownTodo</title>
+
+  <script>
+    // ── Early Route Detection & Parallel Share Bootstrap ──
+    (function () {
+      function hasForceFullAppFlag() {
+        var raw = (window.location.search || '') + '&' + (window.location.hash || '');
+        return /(?:[?&#])full=(?:1|true)(?:[&#]|$)/i.test(raw);
+      }
+
+      function extractShareCodeFrom(raw) {
+        if (!raw) return null;
+        var clean = String(raw).trim();
+        if (clean.charAt(0) === '#') clean = clean.slice(1);
+        if (!clean) return null;
+        try {
+          var url = new URL(clean.charAt(0) === '/' ? clean : '/' + clean, window.location.origin);
+          var path = url.pathname.replace(/\/+$/, '');
+          if (path === '/share' || path.indexOf('/share/') === 0) {
+            var qCode = (url.searchParams.get('code') || '').trim();
+            if (qCode) return qCode;
+            var segs = path.split('/').filter(Boolean);
+            var idx = segs.lastIndexOf('share');
+            if (idx !== -1 && idx + 1 < segs.length) {
+              var segCode = decodeURIComponent(segs[idx + 1]).trim();
+              if (segCode) return segCode;
+            }
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      window.cdtDetectShareCode = function () {
+        if (hasForceFullAppFlag()) return null;
+        return extractShareCodeFrom(window.location.hash) ||
+          extractShareCodeFrom(window.location.pathname + window.location.search);
+      };
+
+      window.cdtShareApiBase = function () {
+        if (window.CDT_SHARE_API_BASE) return window.CDT_SHARE_API_BASE;
+        var host = window.location.hostname || '';
+        if (host === 'cdt.junpgle.me' ||
+            host.slice(-10) === '.pages.dev' ||
+            host === 'localhost' ||
+            host === '127.0.0.1') {
+          return 'https://api-cdt.junpgle.me';
+        }
+        return window.location.origin;
+      };
+
+      window.cdtInjectFullAppHeadTags = function () {
+        if (window.__cdtFullHeadTagsInjected) return;
+        window.__cdtFullHeadTagsInjected = true;
+        var head = document.head;
+        var specs = [
+          ['link', { rel: 'preconnect', href: 'https://challenges.cloudflare.com', crossorigin: '' }],
+          ['link', { rel: 'dns-prefetch', href: 'https://challenges.cloudflare.com' }],
+          ['link', { rel: 'apple-touch-icon', href: 'icons/Icon-180.png' }],
+          ['link', { rel: 'icon', type: 'image/png', sizes: '16x16', href: 'icons/Icon-16.png' }],
+          ['link', { rel: 'manifest', href: 'manifest.json' }]
+        ];
+        for (var i = 0; i < specs.length; i++) {
+          var el = document.createElement(specs[i][0]);
+          var attrs = specs[i][1];
+          for (var key in attrs) {
+            if (Object.prototype.hasOwnProperty.call(attrs, key)) {
+              el.setAttribute(key, attrs[key]);
+            }
+          }
+          head.appendChild(el);
+        }
+      };
+
+      var apiBase = window.cdtShareApiBase();
+      var apiPreconnect = document.createElement('link');
+      apiPreconnect.rel = 'preconnect';
+      apiPreconnect.href = apiBase;
+      apiPreconnect.crossOrigin = '';
+      document.head.appendChild(apiPreconnect);
+
+      var apiDns = document.createElement('link');
+      apiDns.rel = 'dns-prefetch';
+      apiDns.href = apiBase;
+      document.head.appendChild(apiDns);
+
+      var shareCode = window.cdtDetectShareCode();
+      if (shareCode) {
+        document.documentElement.classList.add('cdt-share-mode');
+        window.cdtShareCode = shareCode;
+
+        var tzOffset = new Date().getTimezoneOffset();
+        var prefetchUrl = apiBase + '/api/shares/' + encodeURIComponent(shareCode) +
+          '/data?tz_offset=' + encodeURIComponent(String(tzOffset));
+        window.__cdtSharePrefetch = {
+          code: shareCode,
+          url: prefetchUrl,
+          consumed: false,
+          promise: fetch(prefetchUrl, { method: 'GET' }).then(function (res) {
+            return res.json();
+          })
+        };
+
+        var vp = document.createElement('meta');
+        vp.name = 'viewport';
+        vp.content = 'width=device-width, initial-scale=1.0';
+        document.head.appendChild(vp);
+
+        var css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'share-viewer.css?v=20261127a';
+        document.head.appendChild(css);
+
+        var shareScript = document.createElement('script');
+        shareScript.src = 'share-viewer.js?v=20261127a';
+        shareScript.defer = true;
+        document.head.appendChild(shareScript);
+      } else {
+        window.cdtInjectFullAppHeadTags();
+      }
+    })();
+  </script>
 
   <style>
     @font-face {
@@ -51,6 +158,47 @@
     }
     @media (prefers-color-scheme: dark) {
       body { background: #1a1a2e; }
+    }
+    .cdt-share-mode #loading-indicator {
+      display: none !important;
+    }
+    .cdt-boot-center {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+    }
+    .cdt-boot-card {
+      width: min(420px, 100%);
+      padding: 28px 24px;
+      border-radius: 18px;
+      background: #FFFFFF;
+      border: 1px solid rgba(108, 99, 255, 0.14);
+      box-shadow: 0 8px 28px rgba(32, 30, 72, 0.07);
+      text-align: center;
+      color: #1F1F2E;
+    }
+    .cdt-boot-card h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .cdt-boot-card p {
+      margin: 8px 0 0;
+      font-size: 13.5px;
+      color: #66667E;
+    }
+    @media (prefers-color-scheme: dark) {
+      .cdt-boot-card {
+        background: #1E1E30;
+        border-color: rgba(255, 255, 255, 0.1);
+        color: #F3F3FF;
+      }
+      .cdt-boot-card p {
+        color: #A6A6C2;
+      }
     }
     #loading-indicator {
       position: fixed;
@@ -246,7 +394,7 @@
   <!-- Loading splash (removed by Flutter once first frame is ready) -->
   <div id="loading-indicator">
     <div class="loading-panel">
-      <img class="loading-logo" src="icons/Icon-192.png" alt="CountDownTodo">
+      <img class="loading-logo" data-src="icons/Icon-192.png" alt="CountDownTodo">
       <div class="spinner" aria-hidden="true"></div>
       <h1 class="loading-title">CountDownTodo</h1>
       <p class="loading-text" id="loading-status">正在连接资源…</p>
@@ -267,6 +415,21 @@
       </p>
     </div>
   </div>
+  <script>
+    if (window.cdtShareCode) {
+      var initialShareRoot = document.createElement('div');
+      initialShareRoot.id = 'share-root';
+      initialShareRoot.innerHTML =
+        '<div class="cdt-boot-center">' +
+        '  <div class="cdt-boot-card">' +
+        '    <div class="spinner" style="margin:0 auto 14px;width:36px;height:36px;border-width:3.5px;"></div>' +
+        '    <h2>正在加载团队分享</h2>' +
+        '    <p>已启用并行轻量加载，无需等待完整应用资源</p>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(initialShareRoot);
+    }
+  </script>
   <div id="pwa-install-banner" hidden>
     <div class="pwa-install-copy">
       <strong class="pwa-install-title">安装 CountDownTodo 网页版</strong>
@@ -277,36 +440,6 @@
   </div>
 
   <script>
-    // ── Route Detection: Lightweight Team Share vs Full Flutter Web ──
-    (function () {
-      function extractShareCodeFrom(raw) {
-        if (!raw) return null;
-        var clean = String(raw).trim();
-        if (clean.charAt(0) === '#') clean = clean.slice(1);
-        if (!clean) return null;
-        try {
-          var url = new URL(clean.charAt(0) === '/' ? clean : '/' + clean, window.location.origin);
-          var path = url.pathname.replace(/\/+$/, '');
-          if (path === '/share' || path.indexOf('/share/') === 0) {
-            var qCode = (url.searchParams.get('code') || '').trim();
-            if (qCode) return qCode;
-            var segs = path.split('/').filter(Boolean);
-            var idx = segs.lastIndexOf('share');
-            if (idx !== -1 && idx + 1 < segs.length) {
-              var segCode = decodeURIComponent(segs[idx + 1]).trim();
-              if (segCode) return segCode;
-            }
-          }
-        } catch (_) {}
-        return null;
-      }
-
-      window.cdtDetectShareCode = function () {
-        return extractShareCodeFrom(window.location.hash) ||
-          extractShareCodeFrom(window.location.pathname + window.location.search);
-      };
-    })();
-
     // ── Loading progress --------------------------------------------------
     window.cdtStartLoadingProgress = function () {
       if (window.__cdtLoadingProgressStarted) return;
@@ -616,11 +749,18 @@
       var flutterBooted = false;
       var swRegistered = false;
 
+      function hydrateSplashLogo() {
+        var logo = document.querySelector('#loading-indicator .loading-logo');
+        if (logo && !logo.getAttribute('src') && logo.getAttribute('data-src')) {
+          logo.setAttribute('src', logo.getAttribute('data-src'));
+        }
+      }
+
       function registerServiceWorker() {
         if (swRegistered || !('serviceWorker' in navigator)) return;
         swRegistered = true;
         var register = function () {
-          navigator.serviceWorker.register('sw.js?v=20261114b', { scope: './' }).then(function (reg) {
+          navigator.serviceWorker.register('sw.js?v=20261127a', { scope: './' }).then(function (reg) {
             // Listen for updates and prompt user to reload.
             reg.addEventListener('updatefound', function () {
               var newWorker = reg.installing;
@@ -662,6 +802,11 @@
       function bootFlutterApp() {
         if (flutterBooted) return;
         flutterBooted = true;
+        document.documentElement.classList.remove('cdt-share-mode');
+        if (window.cdtInjectFullAppHeadTags) {
+          window.cdtInjectFullAppHeadTags();
+        }
+        hydrateSplashLogo();
         var splash = document.getElementById('loading-indicator');
         if (splash) splash.style.display = 'flex';
         if (window.cdtStartLoadingProgress) {
@@ -669,7 +814,7 @@
         }
         registerServiceWorker();
         var script = document.createElement('script');
-        script.src = 'flutter_bootstrap.js?v=20261114b';
+        script.src = 'flutter_bootstrap.js?v=20261127a';
         script.async = true;
         document.body.appendChild(script);
       }
@@ -680,27 +825,7 @@
         bootFlutterApp();
       };
 
-      var initialShareCode = window.cdtDetectShareCode && window.cdtDetectShareCode();
-      if (initialShareCode) {
-        // Lightweight share mode: skip Flutter engine, CanvasKit, CJK font, and SW pre-cache.
-        var splash = document.getElementById('loading-indicator');
-        if (splash) splash.style.display = 'none';
-        window.cdtShareCode = initialShareCode;
-
-        var shareRoot = document.createElement('div');
-        shareRoot.id = 'share-root';
-        document.body.appendChild(shareRoot);
-
-        var link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'share-viewer.css?v=20261114a';
-        document.head.appendChild(link);
-
-        var shareScript = document.createElement('script');
-        shareScript.src = 'share-viewer.js?v=20261114a';
-        shareScript.defer = true;
-        document.body.appendChild(shareScript);
-
+      if (window.cdtShareCode) {
         window.addEventListener('hashchange', function () {
           if (!flutterBooted && (!window.cdtDetectShareCode || !window.cdtDetectShareCode())) {
             window.cdtOpenFullApp();

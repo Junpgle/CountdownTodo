@@ -2,29 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
 import '../services/todo_overdue_triage_service.dart';
 import '../utils/calendar_date_math.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 import 'optional_liquid_glass_surface.dart';
-
-String? _todoOverdueTriageDateLocale;
-final _todoOverdueTriageDateFormatters = <String, DateFormat>{};
-
-DateFormat _todoOverdueTriageDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_todoOverdueTriageDateLocale != locale) {
-    _todoOverdueTriageDateLocale = locale;
-    _todoOverdueTriageDateFormatters.clear();
-  }
-  return _todoOverdueTriageDateFormatters.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
 
 class TodoOverdueTriageSheet extends StatefulWidget {
   final String username;
@@ -180,7 +165,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
         context,
         SnackBar(
           content: Text(
-            '已为 "${todo.title}" 安排规划：${_todoOverdueTriageDateFormat('HH:mm').format(slot.start)}–${_todoOverdueTriageDateFormat('HH:mm').format(slot.end)}',
+            '已为 "${todo.title}" 安排规划：${AppTimeFormats.range(slot.start, slot.end, separator: '–')}',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -196,16 +181,11 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     }
   }
 
-  String _formatOverdueTime(
-    DateTime due,
-    DateTime today,
-    DateFormat timeFormat,
-    DateFormat dateFormat,
-  ) {
-    final dueDate = DateTime(due.year, due.month, due.day);
+  String _formatOverdueTime(DateTime due, DateTime today) {
+    final dueDate = CalendarDateMath.dateOnly(due);
     final daysDiff = CalendarDateMath.daysBetween(dueDate, today);
 
-    final timeStr = timeFormat.format(due);
+    final timeStr = AppTimeFormats.clock(due);
     if (daysDiff == 0) {
       return '今天 $timeStr 已过期';
     } else if (daysDiff == 1) {
@@ -213,7 +193,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     } else if (daysDiff == 2) {
       return '前天 $timeStr 逾期';
     } else {
-      return '$daysDiff 天前逾期 (${dateFormat.format(due)})';
+      return '$daysDiff 天前逾期 (${AppTimeFormats.format(due, 'MM-dd')})';
     }
   }
 
@@ -223,9 +203,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final now = widget.service.clock();
-    final today = DateTime(now.year, now.month, now.day);
-    final overdueTimeFormat = _todoOverdueTriageDateFormat('HH:mm');
-    final overdueDateFormat = _todoOverdueTriageDateFormat('MM-dd');
+    final today = CalendarDateMath.dateOnly(now);
 
     final isAllSelected =
         _selectedIds.length == _overdueTodos.length && _overdueTodos.isNotEmpty;
@@ -493,8 +471,6 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                                         _formatOverdueTime(
                                                           todo.dueDate!,
                                                           today,
-                                                          overdueTimeFormat,
-                                                          overdueDateFormat,
                                                         ),
                                                         style: TextStyle(
                                                           fontSize: 11,
@@ -568,7 +544,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                                   ? '今天'
                                                   : '明天';
                                               final timeStr =
-                                                  '$prefix ${overdueTimeFormat.format(slot.start)}–${overdueTimeFormat.format(slot.end)} (${slot.minutes}分)';
+                                                  '$prefix ${AppTimeFormats.range(slot.start, slot.end, separator: '–')} (${slot.minutes}分)';
                                               return ActionChip(
                                                 avatar: const Icon(
                                                   Icons.add_task_rounded,

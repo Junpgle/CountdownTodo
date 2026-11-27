@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/widget_snapshot.dart';
@@ -277,13 +276,13 @@ class WidgetService {
   static String _getDueDateLabel(DateTime? dueDate, {DateTime? now}) {
     if (dueDate == null) return '';
     final instant = now ?? DateTime.now();
-    final today = DateTime(instant.year, instant.month, instant.day);
-    final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final today = CalendarDateMath.dateOnly(instant);
+    final dueDay = CalendarDateMath.dateOnly(dueDate);
     final diffDays = CalendarDateMath.daysBetween(today, dueDay);
     if (diffDays < 0) {
       return '已逾期';
     } else if (diffDays == 0) {
-      return '今天 ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
+      return '今天 ${AppTimeFormats.clock(dueDate)}';
     } else if (diffDays == 1) {
       return '明天';
     } else {
@@ -298,10 +297,10 @@ class WidgetService {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
-    final tomorrow = DateTime(today.year, today.month, today.day + 1);
-    final courseRangeEnd = DateTime(today.year, today.month, today.day + 15);
-    final courseDateFormat = DateFormat('yyyy-MM-dd');
+    DateTime today = CalendarDateMath.dateOnly(now);
+    final tomorrow = AppTimeFormats.localDayStartOffset(today, 1);
+    final courseRangeEnd = AppTimeFormats.localDayStartOffset(today, 15);
+    final courseDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
 
     final results = await Future.wait([
       Future.value(todos),
@@ -389,7 +388,7 @@ class WidgetService {
           if (item.title.trim().isEmpty) return false;
           final date = DateTime.tryParse(item.date)?.toLocal();
           if (date == null) return false;
-          final day = DateTime(date.year, date.month, date.day);
+          final day = CalendarDateMath.dateOnly(date);
           if (day.isBefore(today) || !day.isBefore(scheduleLimit)) {
             return false;
           }
@@ -441,13 +440,8 @@ class WidgetService {
     final List<Map<String, dynamic>> slimTimeLogs = tlogsRaw
         .where((l) {
           if (l.isDeleted) return false;
-          final d = DateTime.fromMillisecondsSinceEpoch(
-            l.startTime,
-            isUtc: true,
-          ).toLocal();
-          return d.year == today.year &&
-              d.month == today.month &&
-              d.day == today.day;
+          final d = AppTimeFormats.localFromServerTimestamp(l.startTime);
+          return AppTimeFormats.isSameDay(d, today);
         })
         .map(
           (l) => {
@@ -463,13 +457,8 @@ class WidgetService {
     final List<Map<String, dynamic>> slimPoms = pomsRaw
         .where((p) {
           if (p.isDeleted) return false;
-          final d = DateTime.fromMillisecondsSinceEpoch(
-            p.startTime,
-            isUtc: true,
-          ).toLocal();
-          return d.year == today.year &&
-              d.month == today.month &&
-              d.day == today.day;
+          final d = AppTimeFormats.localFromServerTimestamp(p.startTime);
+          return AppTimeFormats.isSameDay(d, today);
         })
         .map(
           (p) => {
@@ -574,14 +563,17 @@ class WidgetService {
   }) {
     final entries = transactions.toList(growable: false);
     final asOfAt = now.millisecondsSinceEpoch;
-    final eligible = entries
-        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
-        .toList(growable: false)
-      ..sort((a, b) {
-        final eventCompare = b.balanceEventAt().compareTo(a.balanceEventAt());
-        if (eventCompare != 0) return eventCompare;
-        return b.updatedAt.compareTo(a.updatedAt);
-      });
+    final eligible =
+        entries
+            .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+            .toList(growable: false)
+          ..sort((a, b) {
+            final eventCompare = b.balanceEventAt().compareTo(
+              a.balanceEventAt(),
+            );
+            if (eventCompare != 0) return eventCompare;
+            return b.updatedAt.compareTo(a.updatedAt);
+          });
     final latest = eligible.isEmpty ? null : eligible.first;
     final summary = FinanceSummary.fromTransactions(entries, asOfAt: asOfAt);
     String titleFor(FinanceTransaction transaction) {
@@ -622,7 +614,7 @@ class WidgetService {
     String format(int millisecondsSinceEpoch) {
       final date = DateTime.fromMillisecondsSinceEpoch(millisecondsSinceEpoch)
           .toLocal();
-      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return AppTimeFormats.clock(date);
     }
 
     final startText = format(startMs);
@@ -768,7 +760,7 @@ class WidgetService {
     List<WidgetHabitItem> habitItems = const [],
     WidgetFinanceSummary finance = const WidgetFinanceSummary(),
   }) async {
-    final dateFormat = DateFormat('yyyy-MM-dd');
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
 
     // 1. 倒数日：未删除、未过期，按目标日期排序
     final countdownItems = <WidgetCountdownItem>[];
@@ -805,8 +797,7 @@ class WidgetService {
                   timeText = '已逾期';
                   priority = 3;
                 } else if (diffDays == 0) {
-                  timeText =
-                      '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
+                  timeText = '今天 ${AppTimeFormats.clock(t.dueDate!)}';
                   priority = 2;
                 } else if (diffDays == 1) {
                   timeText = '明天';
@@ -1028,7 +1019,7 @@ class WidgetService {
     Map<String, dynamic> input,
   ) {
     final now = DateTime.fromMillisecondsSinceEpoch(input['now'] as int);
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final List<Map<String, dynamic>> allTodos = (input['todos'] as List)
         .cast<Map<String, dynamic>>();
     final List<Map<String, dynamic>> allCourses = (input['courses'] as List)
@@ -1083,7 +1074,7 @@ class WidgetService {
       final dueDateMs = t['dueDate'] as int?;
       if (dueDateMs != null) {
         final d = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
-        final dDay = DateTime(d.year, d.month, d.day);
+        final dDay = CalendarDateMath.dateOnly(d);
         if (dDay.isBefore(today)) {
           keepMostUrgent(pastTodos, t);
         } else if (dDay.isAfter(today)) {
@@ -1117,8 +1108,7 @@ class WidgetService {
         dueDate = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
       }
       final isDueToday =
-          dueDate == null ||
-          !DateTime(dueDate.year, dueDate.month, dueDate.day).isAfter(today);
+          dueDate == null || !CalendarDateMath.dateOnly(dueDate).isAfter(today);
       if (isDueToday) title = '<b>$title</b>';
       resultData['todo_${i + 1}'] = title;
       resultData['todo_${i + 1}_done'] = todo['isDone'] as bool? ?? false;

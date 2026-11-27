@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/plan_availability.dart';
 import '../models/plan_weekly_availability.dart';
@@ -12,6 +11,8 @@ import '../services/conflict_visibility_service.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../storage_service.dart';
+import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 enum PlanExplanationAction { modify, split }
 
@@ -64,9 +65,6 @@ class _PlanAvailabilityExplanationScreenState
   bool _busy = false, _stale = false;
   int _sequence = 0;
   String? _error;
-  String? _dateFormatLocale;
-  DateFormat? _dateFormatter;
-  DateFormat? _timeFormatter;
   PlanAvailabilityQuery? _derivedQuery;
   PlanAvailabilitySnapshot? _derivedSnapshot;
   DateTime? _derivedToday;
@@ -74,18 +72,6 @@ class _PlanAvailabilityExplanationScreenState
   _PlanExplanationDerivedData? _cachedDerivedData;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   PlanAvailabilityQuery get _query => widget.query;
-
-  void _ensureDateFormatters() {
-    final locale = Intl.defaultLocale;
-    if (_dateFormatLocale == locale &&
-        _dateFormatter != null &&
-        _timeFormatter != null) {
-      return;
-    }
-    _dateFormatLocale = locale;
-    _dateFormatter = DateFormat('MM月dd日', locale);
-    _timeFormatter = DateFormat('HH:mm', locale);
-  }
 
   @override
   void initState() {
@@ -239,7 +225,7 @@ class _PlanAvailabilityExplanationScreenState
       if (mounted && sequence == _sequence) {
         setState(() {
           _stale = true;
-          _error = e is PlanAvailabilityException ? e.message : '安排读取失败，请重试';
+          _error = formatPlanErrorMessage(e, fallback: '安排读取失败，请重试');
         });
         _reveal(_errorKey, sequence);
       }
@@ -289,7 +275,7 @@ class _PlanAvailabilityExplanationScreenState
         setState(() {
           _stale = true;
           _range = null;
-          _error = e is PlanAvailabilityException ? e.message : '时段复核失败，请重试';
+          _error = formatPlanErrorMessage(e, fallback: '时段复核失败，请重试');
         });
         _reveal(_errorKey, sequence);
       }
@@ -300,20 +286,14 @@ class _PlanAvailabilityExplanationScreenState
     }
   }
 
-  String _date(DateTime d) {
-    _ensureDateFormatters();
-    return _dateFormatter!.format(d);
-  }
+  String _date(DateTime d) => AppTimeFormats.monthDayCn(d);
 
-  String _time(DateTime d) {
-    _ensureDateFormatters();
-    return _timeFormatter!.format(d);
-  }
+  String _time(DateTime d) => AppTimeFormats.clock(d);
 
   _PlanExplanationDerivedData _derivedDataFor(DateTime now) {
     final query = _query;
     final snapshot = _snapshot;
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final currentMinute = PlanAvailabilityService.minuteCeiling(now);
     final cachedData = _cachedDerivedData;
     if (cachedData != null &&
@@ -346,18 +326,13 @@ class _PlanAvailabilityExplanationScreenState
     return derivedData;
   }
 
-  String _minute(int m) =>
-      '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  String _minute(int m) => AppTimeFormats.minuteOfDay(m);
   @override
   Widget build(BuildContext context) {
     final derivedData = _derivedDataFor(_now);
     final diagnostic = derivedData.diagnostic;
     final due = PlanAvailabilityService.deadline(_snapshot.todo);
-    final next = DateTime(
-      _query.date.year,
-      _query.date.month,
-      _query.date.day + 1,
-    );
+    final next = AppTimeFormats.localDayStartOffset(_query.date, 1);
     final canFollow = diagnostic.valid && (due == null || due.isAfter(next));
     final fragments = derivedData.fragments;
     final colors = Theme.of(context).colorScheme;
@@ -647,7 +622,7 @@ class _PlanAvailabilityExplanationScreenState
                   const SizedBox(height: 24),
                   Text(
                     range.end.isAfter(range.start)
-                        ? '后续日期 · ${_date(range.start)}—${_date(DateTime(range.end.year, range.end.month, range.end.day - 1))}'
+                        ? '后续日期 · ${_date(range.start)}—${_date(AppTimeFormats.localDayStartOffset(range.end, -1))}'
                         : '截止前已无后续日期',
                     key: _rangeKey,
                     style: theme.textTheme.titleMedium?.copyWith(

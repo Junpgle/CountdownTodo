@@ -95,4 +95,29 @@ void main() {
       1,
     );
   });
+
+  test(
+    'dateOnly and zero-day addDays short-circuit local midnight instances',
+    () {
+      final localMidnight = DateTime(2026, 11, 26);
+      expect(
+        identical(CalendarDateMath.dateOnly(localMidnight), localMidnight),
+        isTrue,
+      );
+      expect(
+        identical(CalendarDateMath.addDays(localMidnight, 0), localMidnight),
+        isTrue,
+      );
+
+      final withTime = DateTime(2026, 11, 26, 14, 30);
+      expect(CalendarDateMath.dateOnly(withTime), DateTime(2026, 11, 26));
+
+      final utcMidnight = DateTime.utc(2026, 11, 26);
+      expect(
+        identical(CalendarDateMath.dateOnly(utcMidnight), utcMidnight),
+        isFalse,
+      );
+      expect(CalendarDateMath.dateOnly(utcMidnight), DateTime(2026, 11, 26));
+    },
+  );
 }

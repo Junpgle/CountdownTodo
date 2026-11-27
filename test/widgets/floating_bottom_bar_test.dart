@@ -1088,4 +1088,112 @@ void main() {
     expect(tickerModes, isNotEmpty);
     expect(tickerModes, everyElement(isFalse));
   });
+
+  testWidgets(
+    'FloatingGlassAppBarActionGroup renders one shared glass capsule for multiple actions',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final collapseProgress = ValueNotifier<double>(1);
+      addTearDown(collapseProgress.dispose);
+      var tapped = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: FloatingGlassAppBar(
+              title: const Text('Grouped toolbar'),
+              actions: [
+                FloatingGlassAppBarActionGroup(
+                  collapseProgress: collapseProgress,
+                  children: [
+                    IconButton(
+                      onPressed: () => tapped++,
+                      icon: const Icon(Icons.search),
+                    ),
+                    IconButton(
+                      onPressed: () => tapped++,
+                      icon: const Icon(Icons.sync),
+                    ),
+                    IconButton(
+                      onPressed: () => tapped++,
+                      icon: const Icon(Icons.settings),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 220));
+
+      expect(find.byType(FloatingGlassAppBarAction), findsNothing);
+      expect(find.byType(FloatingGlassControl), findsOneWidget);
+      expect(find.byType(GlassContainer), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.tap(find.byIcon(Icons.sync));
+      await tester.tap(find.byIcon(Icons.settings));
+      expect(tapped, 3);
+    },
+  );
+
+  testWidgets(
+    'mid-transition AppBar shells modulate shellOpacity without Opacity wrapper',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final collapseProgress = ValueNotifier<double>(0.58);
+      addTearDown(collapseProgress.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: FloatingGlassAppBar(
+              leading: FloatingGlassAppBarAction(
+                collapseProgress: collapseProgress,
+                child: IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.menu),
+                ),
+              ),
+              title: const Text('Mid transition'),
+              actions: [
+                FloatingGlassAppBarActionGroup(
+                  collapseProgress: collapseProgress,
+                  children: [
+                    IconButton(
+                      onPressed: () {},
+                      icon: const Icon(Icons.search),
+                    ),
+                    IconButton(onPressed: () {}, icon: const Icon(Icons.sync)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 90));
+
+      final controls = tester
+          .widgetList<FloatingGlassControl>(find.byType(FloatingGlassControl))
+          .toList();
+      expect(controls, hasLength(2));
+      for (final control in controls) {
+        expect(control.shellOpacity, greaterThan(0.0));
+        expect(control.shellOpacity, lessThan(1.0));
+        expect(
+          find.ancestor(
+            of: find.byWidget(control),
+            matching: find.byType(Opacity),
+          ),
+          findsNothing,
+        );
+      }
+      expect(find.byType(BackdropGroup), findsOneWidget);
+      expect(find.byType(GlassBackdropGroup), findsOneWidget);
+    },
+  );
 }

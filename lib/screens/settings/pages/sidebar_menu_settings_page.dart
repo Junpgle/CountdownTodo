@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/sidebar_menu_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
@@ -248,7 +249,13 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final content = _isLoading
-        ? const Center(child: CircularProgressIndicator())
+        ? AppSkeletonListPage(
+            topPadding: widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context),
+            itemCount: 6,
+            itemHeight: 64,
+          )
         : ListView(
             padding: EdgeInsets.fromLTRB(
               16,

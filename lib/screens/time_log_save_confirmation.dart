@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../services/time_log_overlap_service.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 Future<bool?> showTimeLogSaveConfirmation({
   required BuildContext context,
@@ -40,9 +40,6 @@ class TimeLogSaveConfirmationDialog extends StatelessWidget {
   final bool isFuture;
   final bool isEditing;
 
-  static final DateFormat _timeFormat = DateFormat('MM-dd HH:mm');
-  static final DateFormat _hourMinuteFormat = DateFormat('HH:mm');
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -77,7 +74,7 @@ class TimeLogSaveConfirmationDialog extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '本次补录时段：${_timeFormat.format(start)} → ${_timeFormat.format(end)}',
+                  '本次补录时段：${AppTimeFormats.compactDateTime(start)} → ${AppTimeFormats.compactDateTime(end)}',
                 ),
                 if (isFuture) ...[
                   const SizedBox(height: 12),
@@ -149,8 +146,8 @@ class _OverlapItem extends StatelessWidget {
     final start = DateTime.fromMillisecondsSinceEpoch(overlap.startTime);
     final end = DateTime.fromMillisecondsSinceEpoch(overlap.endTime);
     final timeRange =
-        '${TimeLogSaveConfirmationDialog._timeFormat.format(start)} → '
-        '${TimeLogSaveConfirmationDialog._timeFormat.format(end)}';
+        '${AppTimeFormats.compactDateTime(start)} → '
+        '${AppTimeFormats.compactDateTime(end)}';
     final title = overlap.title.trim().isEmpty
         ? overlap.sourceLabel
         : overlap.title;
@@ -241,8 +238,8 @@ class _OverlapTimeline extends StatelessWidget {
   final ColorScheme colors;
 
   String _formatRange(int startTime, int endTime) =>
-      '${TimeLogSaveConfirmationDialog._timeFormat.format(DateTime.fromMillisecondsSinceEpoch(startTime))} → '
-      '${TimeLogSaveConfirmationDialog._timeFormat.format(DateTime.fromMillisecondsSinceEpoch(endTime))}';
+      '${AppTimeFormats.compactDateTime(DateTime.fromMillisecondsSinceEpoch(startTime))} → '
+      '${AppTimeFormats.compactDateTime(DateTime.fromMillisecondsSinceEpoch(endTime))}';
 
   Widget _buildAxisLabel(
     int timestamp, {
@@ -254,10 +251,7 @@ class _OverlapTimeline extends StatelessWidget {
     final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
     final style = TextStyle(color: color, fontSize: 10);
     if (!crossesDate) {
-      return Text(
-        TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
-        style: style,
-      );
+      return Text(AppTimeFormats.clock(dateTime), style: style);
     }
 
     return Column(
@@ -267,13 +261,10 @@ class _OverlapTimeline extends StatelessWidget {
           : CrossAxisAlignment.start,
       children: [
         Text(
-          DateFormat(dateFormat.split(' ').first).format(dateTime),
+          AppTimeFormats.format(dateTime, dateFormat.split(' ').first),
           style: style,
         ),
-        Text(
-          TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
-          style: style,
-        ),
+        Text(AppTimeFormats.clock(dateTime), style: style),
       ],
     );
   }
@@ -535,7 +526,7 @@ class _TimelineMarkerLabel extends StatelessWidget {
     );
     if (!crossesDate) {
       return Text(
-        TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
+        AppTimeFormats.clock(dateTime),
         textAlign: TextAlign.center,
         style: style,
       );
@@ -545,12 +536,12 @@ class _TimelineMarkerLabel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          DateFormat(dateFormat.split(' ').first).format(dateTime),
+          AppTimeFormats.format(dateTime, dateFormat.split(' ').first),
           textAlign: TextAlign.center,
           style: style,
         ),
         Text(
-          TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
+          AppTimeFormats.clock(dateTime),
           textAlign: TextAlign.center,
           style: style,
         ),

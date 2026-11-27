@@ -1,6 +1,5 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../models/auto_backup_models.dart';
 import '../../../services/auto_backup_service.dart';
@@ -9,6 +8,8 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'data_import_page.dart';
 
@@ -165,28 +166,14 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
   }
 
   Future<void> _deleteEntry(AutoBackupEntry entry) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          title: const Text('删除备份快照'),
-          content: Text('确定删除 ${entry.fileName} 吗？删除后无法恢复该本地快照。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
-              child: const Text('删除'),
-            ),
-          ],
-        );
-      },
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除备份快照',
+      message: '确定删除 ${entry.fileName} 吗？删除后无法恢复该本地快照。',
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     final ok = await AutoBackupService.deleteBackup(entry.filePath);
     if (!mounted) return;
@@ -201,7 +188,7 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
   String _formatDateTime(int? timestampMs) {
     if (timestampMs == null) return '尚未备份';
     final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
-    return DateFormat('yyyy-MM-dd HH:mm').format(dt);
+    return AppTimeFormats.fullDateTime(dt);
   }
 
   String _formatFileSize(int bytes) {
@@ -260,7 +247,13 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
         context,
         standalone: standalone,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonSettingsPage(
+                topPadding: standalone
+                    ? floatingGlassSettingsContentTopInset(context)
+                    : 16,
+                sectionCount: 2,
+                rowsPerSection: 3,
+              )
             : !AutoBackupService.isSupported
             ? _buildWebUnsupportedView(colorScheme)
             : _buildContent(colorScheme, standalone: standalone),
@@ -619,7 +612,10 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
   }
 
   Widget _buildSnapshotCard(ColorScheme colorScheme, AutoBackupEntry entry) {
-    final timeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(entry.createdAt);
+    final timeStr = AppTimeFormats.format(
+      entry.createdAt,
+      'yyyy-MM-dd HH:mm:ss',
+    );
     final sizeStr = _formatFileSize(entry.sizeBytes);
 
     return Padding(

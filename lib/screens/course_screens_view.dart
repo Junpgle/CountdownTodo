@@ -5,25 +5,16 @@ part of 'course_screens.dart';
 mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   Widget _buildTodaySidebar() {
     DateTime now = DateTime.now();
-    String dateStr = _cachedDateFormat('M月d日').format(now);
-    String weekdayStr = [
-      '周一',
-      '周二',
-      '周三',
-      '周四',
-      '周五',
-      '周六',
-      '周日',
-    ][now.weekday - 1];
+    String dateStr = AppTimeFormats.dateFormatter('M月d日').format(now);
+    String weekdayStr = AppTimeFormats.weekdayLabel(now);
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     List<TodoItem> todayAllDay = !_activeDataViews.contains('todos')
         ? []
         : _allTodos.where((todo) {
-            DateTime start = DateTime.fromMillisecondsSinceEpoch(
+            DateTime start = AppTimeFormats.localFromServerTimestamp(
               todo.createdDate ?? todo.createdAt,
-              isUtc: true,
-            ).toLocal();
+            );
             DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
             bool isAllDayFlag =
@@ -32,10 +23,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                 start.minute == 0 &&
                 todo.dueDate!.hour == 23 &&
                 todo.dueDate!.minute == 59;
-            bool isCrossDay =
-                !(start.year == end.year &&
-                    start.month == end.month &&
-                    start.day == end.day);
+            bool isCrossDay = !AppTimeFormats.isSameDay(start, end);
             bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
             if (!treatAsAllDay) return false;
@@ -45,7 +33,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               return false;
             }
 
-            DateTime todayStart = DateTime(now.year, now.month, now.day);
+            DateTime todayStart = CalendarDateMath.dateOnly(now);
             DateTime todayEndExclusive = CalendarDateMath.addDays(
               todayStart,
               1,
@@ -326,7 +314,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                         alignment: Alignment.center,
                         child: Text(
                           _viewMode == 2
-                              ? _cachedDateFormat('yyyy年M月')
+                              ? AppTimeFormats.dateFormatter('yyyy年M月')
                                     .format(_selectedMonth)
                               : (_viewMode == 1
                                     ? _getBiWeekLabel()
@@ -913,7 +901,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
       backgroundColor: Colors.transparent,
       useGlassSheet: false,
       builder: (sheetContext) => Container(
-        height: MediaQuery.of(sheetContext).size.height * 0.75,
+        height: MediaQuery.sizeOf(sheetContext).height * 0.75,
         decoration: BoxDecoration(
           color: Theme.of(sheetContext).cardColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),

@@ -9,6 +9,7 @@ import 'package:countdown_todo/features/finance/widgets/finance_intro_guide.dart
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/feature_tip_service.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -47,7 +48,8 @@ Future<void> _waitFor(WidgetTester tester, Finder finder) async {
     );
     await tester.pump(const Duration(milliseconds: 20));
     if (finder.evaluate().isNotEmpty &&
-        find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+        find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty) {
       await tester.pumpAndSettle();
       return;
     }
@@ -160,7 +162,6 @@ void main() {
     expect(find.text('跳过教程'), findsNothing);
   });
 
-
   testWidgets('quick entry takes priority and guide waits until it closes', (
     tester,
   ) async {
@@ -174,7 +175,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), null);
   });
-
 
   testWidgets(
     'system back dismisses guide without leaving finance or enabling sync',

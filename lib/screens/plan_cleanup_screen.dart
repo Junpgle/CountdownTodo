@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
@@ -15,6 +14,7 @@ import '../services/todo_editor_save_service.dart';
 import '../storage_service.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
+import '../utils/app_dialogs.dart';
 import 'settings/calendar_sync_page.dart';
 
 bool _affectsPlanCleanup(
@@ -209,7 +209,6 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     with WidgetsBindingObserver {
   final _search = TextEditingController();
   final _selected = <String>{};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   late final PlanCleanupRepository _repository;
   PlanTodoIdentity? _identity;
   PlanCleanupPage? _page;
@@ -233,14 +232,6 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   StreamSubscription<PomodoroRunState?>? _focus;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   bool get _detail => widget.todoId != null;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -357,11 +348,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
-  String _message(Object error) => error is PlanAvailabilityException
-      ? error.message
-      : error is StateError
-      ? error.message.toString()
-      : '处理失败，请重试或重新核对';
+  String _message(Object error) =>
+      formatPlanErrorMessage(error, fallback: '处理失败，请重试或重新核对');
 
   Future<void> _load({
     bool more = false,
@@ -726,7 +714,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         ..sort();
       final ends = preview.rows.map((r) => r['end_time'] as int).toList()
         ..sort();
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (context) {
           void submit(bool value) {
@@ -840,7 +828,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   }
 
   String _date(int ms) =>
-      _cachedDateFormat('yyyy/M/d')
+      AppTimeFormats.dateFormatter('yyyy/M/d')
           .format(DateTime.fromMillisecondsSinceEpoch(ms));
   String _range(PlanCleanupItem item) {
     final start = DateTime.fromMillisecondsSinceEpoch(item.start),
@@ -848,7 +836,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     final offset = start.timeZoneOffset == end.timeZoneOffset
         ? ''
         : ' · ${start.timeZoneName}→${end.timeZoneName}';
-    return '${_cachedDateFormat('HH:mm').format(start)}–${_cachedDateFormat(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
+    if (AppTimeFormats.isSameDay(start, end)) {
+      return '${AppTimeFormats.range(start, end, separator: '–')}$offset';
+    }
+    return '${AppTimeFormats.clock(start)}–${AppTimeFormats.format(end, 'M/d HH:mm')}$offset';
   }
 
   String _reminder(PlanCleanupItem item) {
@@ -878,7 +869,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     if (_working || _inspecting) return;
     setState(() => _inspecting = true);
     try {
-      await showDialog<void>(
+      await showAppDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('规划核对'),
@@ -952,7 +943,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                   onChanged: enabled
                       ? (value) {
                           if (value == true && _selected.length >= 50) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppSnackBars.showSnackBar(
+                              context,
                               const SnackBar(content: Text('一次最多选择50段')),
                             );
                             return;
@@ -1176,7 +1168,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     ];
     String? lastDate;
     for (final item in _items) {
-      final date = _cachedDateFormat('yyyy年M月d日')
+      final date = AppTimeFormats.dateFormatter('yyyy年M月d日')
           .format(DateTime.fromMillisecondsSinceEpoch(item.start));
       if (date != lastDate) {
         children.add(

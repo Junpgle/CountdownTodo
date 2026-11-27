@@ -1,5 +1,7 @@
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
+import '../../../utils/calendar_date_math.dart';
+import '../../../utils/time_utils.dart';
 
 /// The date window used when the assistant asks the finance repository for
 /// data.  `to` is exclusive, matching the storage query contract.
@@ -481,7 +483,7 @@ abstract final class FinanceAiContextService {
     final text = userMessage.trim();
     return text.isNotEmpty &&
         (_containsAny(text, _catalogKeywords) ||
-            RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)').hasMatch(text) ||
+            _rxCached4_1.hasMatch(text) ||
             (shouldInjectFor(text, conversationContext: conversationContext) &&
                 _containsAny(text, _mutationWords)));
   }
@@ -846,11 +848,7 @@ abstract final class FinanceAiContextService {
       asOfAt,
       isUtc: true,
     ).add(const Duration(hours: 14));
-    return DateTime(
-      latestPossibleDate.year,
-      latestPossibleDate.month,
-      latestPossibleDate.day + 1,
-    );
+    return AppTimeFormats.localDayStartOffset(latestPossibleDate, 1);
   }
 
   static FinanceDateRange? _resolveSamePeriodYearRange({
@@ -1840,7 +1838,7 @@ abstract final class FinanceAiContextService {
   }
 
   static bool _isOverlongNumericDatePart(String? value) =>
-      value != null && value.length > 2 && RegExp(r'^\d+$').hasMatch(value);
+      value != null && value.length > 2 && _rxCached4_2.hasMatch(value);
 
   static int? _parseMonthNumber(String value) {
     final numeric = int.tryParse(value);
@@ -1924,8 +1922,7 @@ abstract final class FinanceAiContextService {
     return count * multiplier;
   }
 
-  static DateTime _day(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
+  static DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
   static DateTime _mondayOf(DateTime value) {
     final day = _day(value);
@@ -1937,3 +1934,7 @@ abstract final class FinanceAiContextService {
     return '${text.substring(0, maxLength - 1)}…';
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached4_1 = RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)');
+final RegExp _rxCached4_2 = RegExp(r'^\d+$');

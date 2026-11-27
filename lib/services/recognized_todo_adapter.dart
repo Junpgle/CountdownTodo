@@ -1,5 +1,8 @@
 import '../models.dart';
 import 'item_semantics_service.dart';
+import '../utils/text_utils.dart';
+import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Normalizes recognition results before they enter the current TodoItem protocol.
 ///
@@ -116,7 +119,7 @@ class RecognizedTodoAdapter {
       final sourceDate =
           start ?? due ?? (shouldPromoteSpecial ? effectiveNow : null);
       if (sourceDate != null) {
-        final day = DateTime(sourceDate.year, sourceDate.month, sourceDate.day);
+        final day = CalendarDateMath.dateOnly(sourceDate);
         result['startTime'] = day.toIso8601String();
         result['endTime'] = DateTime(
           sourceDate.year,
@@ -185,12 +188,35 @@ class RecognizedTodoAdapter {
     return DateTime.tryParse(value)?.toLocal();
   }
 
+  static int? parseNullableInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static ParsedTimeSemantics parseTimeSemantics(
+    dynamic raw, {
+    required bool isAllDay,
+    required DateTime? startTime,
+    required DateTime? endTime,
+  }) {
+    if (isAllDay) return ParsedTimeSemantics.dateOnly;
+    if (raw?.toString().trim().toLowerCase() == 'range') {
+      return ParsedTimeSemantics.range;
+    }
+    final mode = parseTimeMode(raw);
+    if (mode == TodoTimeMode.dateOnly) return ParsedTimeSemantics.dateOnly;
+    if (mode == TodoTimeMode.deadline) return ParsedTimeSemantics.deadline;
+    if (mode == TodoTimeMode.unscheduled) {
+      return ParsedTimeSemantics.unscheduled;
+    }
+    return startTime != null && endTime != null
+        ? ParsedTimeSemantics.range
+        : ParsedTimeSemantics.unscheduled;
+  }
+
   static DateTime _fromEpoch(int value) {
     final milliseconds = value.abs() < 100000000000 ? value * 1000 : value;
-    return DateTime.fromMillisecondsSinceEpoch(
-      milliseconds,
-      isUtc: true,
-    ).toLocal();
+    return AppTimeFormats.localFromServerTimestamp(milliseconds);
   }
 
   static bool _isSpecialTodo(String title, String? remark) {
@@ -224,8 +250,6 @@ class RecognizedTodoAdapter {
     }
   }
 
-  static String? _stringValue(dynamic raw) {
-    final value = raw?.toString().trim();
-    return value == null || value.isEmpty ? null : value;
-  }
+  static String? _stringValue(dynamic raw) =>
+      AppTextUtils.trimToNull(raw?.toString());
 }

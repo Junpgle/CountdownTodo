@@ -1,4 +1,6 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal_rule.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 习惯规则解析：逻辑日期、生效规则、计划日与周期计算。
 ///
@@ -10,7 +12,7 @@ abstract final class HabitRuleResolver {
 
   /// 将日期沿本地日历移动指定天数，不受夏令时日长变化影响。
   static DateTime addCalendarDays(DateTime date, int days) =>
-      DateTime(date.year, date.month, date.day + days);
+      AppTimeFormats.localDayStartOffset(date, days);
 
   /// 计算两个日期之间的日历日差（[date] - [other]）。
   static int calendarDayDifference(DateTime date, DateTime other) {
@@ -25,18 +27,14 @@ abstract final class HabitRuleResolver {
   /// 7 月 31 日 23:30 → 7 月 31 日；8 月 1 日 00:40 → 7 月 31 日；
   /// 8 月 1 日 04:20 → 8 月 1 日。
   static DateTime logicalDateFor(DateTime localTime, int dayBoundaryMinute) {
-    final date = DateTime(localTime.year, localTime.month, localTime.day);
+    final date = CalendarDateMath.dateOnly(localTime);
     final minuteOfDay = localTime.hour * 60 + localTime.minute;
     return minuteOfDay < dayBoundaryMinute ? addCalendarDays(date, -1) : date;
   }
 
   /// 逻辑日期键（'yyyy-MM-dd'），用于数据库存储与比较。
-  static String dayKey(DateTime logicalDate) {
-    final d = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
-    return '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
-  }
+  static String dayKey(DateTime logicalDate) =>
+      AppTimeFormats.date(logicalDate);
 
   /// 解析 'yyyy-MM-dd' 为本地日期。
   static DateTime? parseDayKey(String key) {
@@ -146,7 +144,7 @@ abstract final class HabitRuleResolver {
     HabitGoalRuleRevision rule,
     DateTime logicalDate,
   ) {
-    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    final day = CalendarDateMath.dateOnly(logicalDate);
     switch (rule.periodType) {
       case HabitPeriodType.daily:
       case HabitPeriodType.weekdays:
@@ -184,7 +182,7 @@ abstract final class HabitRuleResolver {
     HabitGoalRuleRevision rule,
     DateTime logicalDate,
   ) {
-    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    final day = CalendarDateMath.dateOnly(logicalDate);
     return addCalendarDays(day, 1) == periodEndExclusive(rule, day);
   }
 
@@ -232,7 +230,7 @@ abstract final class HabitRuleResolver {
         return dayKey(logicalDate);
       case HabitPeriodType.weekly:
         final start = periodStart(rule, logicalDate);
-        return 'w-${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+        return 'w-${AppTimeFormats.date(start)}';
       case HabitPeriodType.monthly:
         final start = periodStart(rule, logicalDate);
         return 'm-${start.year}-${start.month.toString().padLeft(2, '0')}';

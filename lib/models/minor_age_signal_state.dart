@@ -1,4 +1,5 @@
 import 'minor_mode_state.dart';
+import '../utils/json_value_parser.dart';
 
 enum MinorAgeSignalStatus {
   notRequested,
@@ -112,12 +113,5 @@ class MinorAgeSignalState {
 
   static bool _asBool(Object? value) => value is bool && value;
 
-  static int? _asInt(Object? value) {
-    return switch (value) {
-      int value => value,
-      num value => value.toInt(),
-      String value => int.tryParse(value),
-      _ => null,
-    };
-  }
+  static int? _asInt(Object? value) => JsonValueParser.toNullableInt(value);
 }

@@ -20,7 +20,7 @@ import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
-import '../../../widgets/app_state_views.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
@@ -37,7 +37,10 @@ class PreferenceSettingsPage extends StatefulWidget {
   State<PreferenceSettingsPage> createState() => _PreferenceSettingsPageState();
 }
 
-class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
+class _PreferenceSettingsPageState extends State<PreferenceSettingsPage>
+    with
+        SettingsNavigationMixin<PreferenceSettingsPage>,
+        SettingsTargetHighlightMixin<PreferenceSettingsPage> {
   final Map<String, GlobalKey> _itemKeys = {
     'sync_interval': GlobalKey(),
     'conflict_detection': GlobalKey(),
@@ -58,7 +61,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   };
 
   bool _isLoading = true;
-  String? _highlightTarget;
 
   String _themeMode = 'system';
   bool _oledBlackModeEnabled = true;
@@ -70,24 +72,15 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
-  Timer? _highlightTimer;
 
-  GlobalKey _navigationKey(String id) =>
-      _itemKeys.putIfAbsent(id, () => GlobalKey(debugLabel: 'settings-$id'));
+  @override
+  Map<String, GlobalKey> get settingsNavigationKeyStore => _itemKeys;
 
-  Future<T?> _openSettingsPage<T>(
-    String id,
-    Widget page, {
-    RouteSettings? settings,
-    bool rootNavigator = false,
-  }) => SettingsNavigation.push<T>(
-    context: context,
-    page: page,
-    sourceKey: _navigationKey(id),
-    isEmbedded: widget.isEmbedded,
-    rootNavigator: rootNavigator,
-    settings: settings,
-  );
+  @override
+  bool get isEmbeddedSettingsPage => widget.isEmbedded;
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   @override
   void initState() {
@@ -106,11 +99,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
     _storageManagementHandler.calculateCacheSize();
 
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToTarget(widget.initialTarget!);
-      });
-    }
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   Future<void> _loadSettings() async {
@@ -143,36 +132,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         }
         _isLoading = false;
       });
-      if (widget.initialTarget != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _scrollToTarget(widget.initialTarget!);
-        });
-      }
+      scheduleInitialSettingsTarget(widget.initialTarget);
     }
-  }
-
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    if (key?.currentContext != null) {
-      setState(() => _highlightTarget = target);
-      Scrollable.ensureVisible(
-        key!.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.15,
-      );
-      _highlightTimer?.cancel();
-      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-        _highlightTimer = null;
-        if (mounted) setState(() => _highlightTarget = null);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _highlightTimer?.cancel();
-    super.dispose();
   }
 
   void _showLoadingDialog(BuildContext context, String message) {
@@ -270,7 +231,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   Widget _buildTile({required String targetId, required Widget child}) {
     return AppSettingsHighlightedTile(
       targetId: targetId,
-      highlightTarget: _highlightTarget,
+      highlightTarget: highlightTarget,
       itemKeys: _itemKeys,
       borderRadius: BorderRadius.zero,
       child: child,
@@ -282,7 +243,24 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isWeb = AppPlatform.isWeb;
     if (_isLoading) {
-      return const Scaffold(body: AppLoadingView());
+      return Scaffold(
+        extendBodyBehindAppBar: !widget.isEmbedded,
+        appBar: widget.isEmbedded
+            ? null
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
+                title: const Text('系统与外观'),
+              ),
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: !widget.isEmbedded,
+          child: AppSkeletonSettingsPage(
+            topPadding: widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context),
+          ),
+        ),
+      );
     }
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,
@@ -385,7 +363,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                     subtitle: const Text('使用指南、快速上手、常见问题'),
                     trailing: const Icon(Icons.chevron_right, size: 18),
                     onTap: () {
-                      _openSettingsPage(
+                      openSettingsPage(
                         'help_center',
                         HelpCenterScreen(username: _username),
                       );
@@ -404,7 +382,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                     subtitle: const Text('查看当前版本及历史更新内容'),
                     trailing: const Icon(Icons.chevron_right, size: 18),
                     onTap: () {
-                      _openSettingsPage(
+                      openSettingsPage(
                         'changelog',
                         FeatureGuideScreen(
                           mode: FeatureGuideMode.changelog,
@@ -427,7 +405,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                     subtitle: const Text('查看新版本功能介绍与使用引导'),
                     trailing: const Icon(Icons.chevron_right, size: 18),
                     onTap: () {
-                      _openSettingsPage(
+                      openSettingsPage(
                         'feature_guide',
                         FeatureGuideScreen(
                           mode: FeatureGuideMode.guide,
@@ -482,8 +460,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                 ),
                 GestureDetector(
-                  key: _navigationKey('wallpaper_advanced'),
-                  onTap: () => _openSettingsPage(
+                  key: settingsNavigationKey('wallpaper_advanced'),
+                  onTap: () => openSettingsPage(
                     'wallpaper_advanced',
                     WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '首页壁纸设置'),
@@ -700,9 +678,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                 ),
                 GestureDetector(
-                  key: _navigationKey('home_text_advanced'),
+                  key: settingsNavigationKey('home_text_advanced'),
                   onTap: () async {
-                    final result = await _openSettingsPage<bool>(
+                    final result = await openSettingsPage<bool>(
                       'home_text_advanced',
                       HomeTextConfigPage(isEmbedded: widget.isEmbedded),
                       settings: const RouteSettings(name: '首页文字自定义'),
@@ -734,9 +712,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
             const SizedBox(height: 16),
             GestureDetector(
-              key: _navigationKey('home_text_preview'),
+              key: settingsNavigationKey('home_text_preview'),
               onTap: () async {
-                final result = await _openSettingsPage<bool>(
+                final result = await openSettingsPage<bool>(
                   'home_text_preview',
                   HomeTextConfigPage(isEmbedded: widget.isEmbedded),
                   settings: const RouteSettings(name: '首页文字自定义'),
@@ -828,9 +806,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                 ),
                 GestureDetector(
-                  key: _navigationKey('home_layout_advanced'),
+                  key: settingsNavigationKey('home_layout_advanced'),
                   onTap: () {
-                    _openSettingsPage(
+                    openSettingsPage(
                       'home_layout_advanced',
                       HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
                       settings: const RouteSettings(name: '首页布局'),
@@ -857,9 +835,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
             const SizedBox(height: 16),
             GestureDetector(
-              key: _navigationKey('home_layout_preview'),
+              key: settingsNavigationKey('home_layout_preview'),
               onTap: () {
-                _openSettingsPage(
+                openSettingsPage(
                   'home_layout_preview',
                   HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
                   settings: const RouteSettings(name: '首页布局'),
@@ -999,7 +977,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                 ),
                 InkWell(
-                  key: _navigationKey('sidebar_menu_advanced'),
+                  key: settingsNavigationKey('sidebar_menu_advanced'),
                   borderRadius: BorderRadius.circular(8),
                   onTap: () =>
                       _openSidebarMenuSettings('sidebar_menu_advanced'),
@@ -1033,7 +1011,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               button: true,
               label: '配置侧边栏菜单',
               child: GestureDetector(
-                key: _navigationKey('sidebar_menu_preview'),
+                key: settingsNavigationKey('sidebar_menu_preview'),
                 onTap: () => _openSidebarMenuSettings('sidebar_menu_preview'),
                 child: OptionalLiquidGlassCard(
                   width: double.infinity,
@@ -1086,7 +1064,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Future<void> _openSidebarMenuSettings(String sourceId) {
-    return _openSettingsPage(
+    return openSettingsPage(
       sourceId,
       SidebarMenuSettingsPage(isEmbedded: widget.isEmbedded),
       settings: const RouteSettings(name: '侧边栏菜单'),

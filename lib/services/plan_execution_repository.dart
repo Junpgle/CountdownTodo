@@ -7,6 +7,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
 import 'pomodoro_service.dart';
+import '../utils/calendar_date_math.dart';
 
 class PlanExecutionData {
   const PlanExecutionData({required this.records, required this.logs});
@@ -53,15 +54,10 @@ class PlanExecutionRepository {
     final db =
         databaseOverride ??
         await DatabaseHelper.instance.databaseForUser(username);
-    final start = DateTime(
-      date.year,
-      date.month,
-      date.day,
-    ).millisecondsSinceEpoch;
-    final end = DateTime(
-      date.year,
-      date.month,
-      date.day + 1,
+    final start = CalendarDateMath.dateOnly(date).millisecondsSinceEpoch;
+    final end = AppTimeFormats.localDayStartOffset(
+      date,
+      1,
     ).millisecondsSinceEpoch;
     // Preserve PomodoroService's one-time Prefs migration when the SQL table
     // is empty; ordinary day reads do not load the entire record history.

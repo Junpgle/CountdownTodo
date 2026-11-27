@@ -1,9 +1,11 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// Builds a request-scoped, read-only snapshot of the user's habit goals.
 abstract final class HabitAiContextService {
@@ -911,18 +913,12 @@ abstract final class HabitAiContextService {
 
   static String _formatMinute(int? minute) {
     if (minute == null) return '时间未设定';
-    final hourText = (minute ~/ 60).toString().padLeft(2, '0');
-    final minuteText = (minute % 60).toString().padLeft(2, '0');
-    return '$hourText:$minuteText';
+    return AppTimeFormats.minuteOfDay(minute);
   }
 
-  static String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  static String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
-  static DateTime _day(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+  static DateTime _day(DateTime date) => CalendarDateMath.dateOnly(date);
 
   static bool _containsAny(String text, List<String> words) =>
       words.any(text.contains);

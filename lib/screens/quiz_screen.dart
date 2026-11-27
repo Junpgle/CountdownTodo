@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/notification_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 // 新增：用于保存会话状态的类
@@ -465,7 +466,11 @@ class _QuizScreenState extends State<QuizScreen>
           flexibleSpace: const FloatingGlassTopBarBackground(),
           title: const Text("准备中..."),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const AppSkeletonFormPage(
+          topPadding: 16,
+          showAmountHeader: true,
+          fieldCount: 4,
+        ),
       );
     }
 

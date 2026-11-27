@@ -6,13 +6,14 @@ import 'package:flutter/material.dart';
 import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
 import '../../../services/reminder_schedule_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_catalog_manager.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_automation_screen.dart';
 import 'finance_bill_import_screen.dart';
 import '../../../utils/app_dialogs.dart';
@@ -36,7 +37,8 @@ class FinanceSettingsScreen extends StatefulWidget {
   State<FinanceSettingsScreen> createState() => _FinanceSettingsScreenState();
 }
 
-class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
+class _FinanceSettingsScreenState extends State<FinanceSettingsScreen>
+    with FinanceRevisionRefreshMixin<FinanceSettingsScreen> {
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   bool _budgetAlertsEnabled = true;
@@ -46,7 +48,6 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
-  Timer? _financeChangeRefreshTimer;
   _FinanceSettingsSection _section = _FinanceSettingsSection.catalog;
   final GlobalKey _billImportKey = GlobalKey();
 
@@ -56,24 +57,12 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     if (widget.initialPreferences) {
       _section = _FinanceSettingsSection.preferences;
     }
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
-  void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
-    super.dispose();
-  }
-
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_load());
-    });
-  }
+  void onFinanceRevisionRefresh() => unawaited(_load());
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
@@ -301,23 +290,12 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     required String title,
     required String message,
   }) {
-    return showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.archive_outlined),
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('归档'),
-          ),
-        ],
-      ),
+    return AppDialogs.confirm(
+      context,
+      icon: const Icon(Icons.archive_outlined),
+      title: title,
+      message: message,
+      confirmLabel: '归档',
     );
   }
 
@@ -338,7 +316,12 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonSettingsPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 1000,
+                sectionCount: 3,
+                rowsPerSection: 3,
+              )
             : _loadError != null
             ? Center(
                 child: Column(

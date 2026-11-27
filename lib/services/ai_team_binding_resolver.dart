@@ -46,7 +46,7 @@ abstract final class AiTeamBindingResolver {
       ]) {
         final captured = pattern.firstMatch(clause)?.group(1)?.trim();
         if (captured == null || captured.isEmpty) continue;
-        final candidate = captured.replaceFirst(RegExp(r'^(?:团队|小组)\s*'), '');
+        final candidate = captured.replaceFirst(_rxAiTeamBinding1, '');
         if (candidate.isNotEmpty) return candidate;
       }
     }
@@ -54,7 +54,7 @@ abstract final class AiTeamBindingResolver {
   }
 
   static List<String> _bindingClauses(String text) => text
-      .split(RegExp(r'[，。；！？,;]|然后|同时|但是|但'))
+      .split(_rxAiTeamBinding2)
       .map((clause) => clause.trim())
       .where(
         (clause) =>
@@ -111,8 +111,15 @@ abstract final class AiTeamBindingResolver {
     return value
         .trim()
         .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), '')
-        .replaceAll(RegExp(r'[‐‑‒–—−－]'), '-')
-        .replaceFirst(RegExp(r'(?:班级|班|团队|小组|组)$'), '');
+        .replaceAll(_rxAiTeamBinding3, '')
+        .replaceAll(_rxAiTeamBinding4, '-')
+        .replaceFirst(_rxAiTeamBinding5, '');
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiTeamBinding1 = RegExp(r'^(?:团队|小组)\s*');
+final RegExp _rxAiTeamBinding2 = RegExp(r'[，。；！？,;]|然后|同时|但是|但');
+final RegExp _rxAiTeamBinding3 = RegExp(r'\s+');
+final RegExp _rxAiTeamBinding4 = RegExp(r'[‐‑‒–—−－]');
+final RegExp _rxAiTeamBinding5 = RegExp(r'(?:班级|班|团队|小组|组)$');

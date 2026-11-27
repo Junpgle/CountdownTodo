@@ -191,7 +191,8 @@ class ManagementPage extends StatelessWidget {
     this.topPadding = 0,
   }) : itemCount = null,
        itemBuilder = null,
-       findChildIndexCallback = null;
+       findChildIndexCallback = null,
+       slivers = null;
 
   const ManagementPage.builder({
     super.key,
@@ -201,13 +202,26 @@ class ManagementPage extends StatelessWidget {
     this.maxWidth = 960,
     this.topPadding = 0,
   }) : children = const [],
+       slivers = null,
        assert(itemCount != null),
        assert(itemBuilder != null);
+
+  const ManagementPage.slivers({
+    super.key,
+    required this.slivers,
+    this.maxWidth = 960,
+    this.topPadding = 0,
+  }) : children = const [],
+       itemCount = null,
+       itemBuilder = null,
+       findChildIndexCallback = null,
+       assert(slivers != null);
 
   final List<Widget> children;
   final int? itemCount;
   final IndexedWidgetBuilder? itemBuilder;
   final ChildIndexGetter? findChildIndexCallback;
+  final List<Widget>? slivers;
   final double maxWidth;
   final double topPadding;
 
@@ -220,6 +234,20 @@ class ManagementPage extends StatelessWidget {
           16.0,
           double.infinity,
         );
+        final pageSlivers = slivers;
+        if (pageSlivers != null) {
+          final horizontalPadding = EdgeInsets.symmetric(horizontal: inset);
+          return CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: SizedBox(height: topPadding + 16)),
+              for (final sliver in pageSlivers)
+                SliverPadding(padding: horizontalPadding, sliver: sliver),
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+            ],
+          );
+        }
         final padding = EdgeInsets.fromLTRB(inset, topPadding + 16, inset, 32);
         final builder = itemBuilder;
         if (builder != null) {

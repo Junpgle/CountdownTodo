@@ -1,3 +1,4 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -16,11 +17,10 @@ abstract final class HabitText {
       case HabitPeriodType.monthly:
         return '每月';
       case HabitPeriodType.weekdays:
-        final names = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
         final selected = <String>[];
         for (int i = 0; i < 7; i++) {
           if ((rule.weekdaysMask & (1 << i)) != 0) {
-            selected.add(names[i]);
+            selected.add(AppTimeFormats.weekdayLabelsZh[i]);
           }
         }
         if (selected.isEmpty) return '每周';
@@ -66,9 +66,7 @@ abstract final class HabitText {
   }
 
   /// 时间点型：实际时间。
-  static String timeOfDay(DateTime time) =>
-      '${time.hour.toString().padLeft(2, '0')}:'
-      '${time.minute.toString().padLeft(2, '0')}';
+  static String timeOfDay(DateTime time) => AppTimeFormats.clock(time);
 
   /// 秒数 → 人类可读时长，如「2 小时 05 分」/「45 分钟」。
   static String formatDuration(int seconds) {
@@ -83,9 +81,10 @@ abstract final class HabitText {
   /// 目标时间文案（分钟 → HH:mm）。
   static String targetTime(int? minuteOfDay) {
     if (minuteOfDay == null) return '';
-    final h = (minuteOfDay ~/ 60) % 24;
-    final m = minuteOfDay % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(
+      (minuteOfDay ~/ 60) % 24,
+      minuteOfDay % 60,
+    );
   }
 
   /// 时间点型习惯的状态说明，如「比目标早 12 分钟」。

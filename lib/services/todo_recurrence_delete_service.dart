@@ -1,6 +1,8 @@
 import '../models.dart';
 import 'todo_recurrence_date_service.dart';
 import 'todo_recurrence_series_edit_service.dart';
+import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 enum TodoRecurrenceDeleteScope { occurrence, future, series }
 
@@ -221,16 +223,14 @@ abstract final class TodoRecurrenceDeleteService {
   }
 
   static bool _hasNextOccurrence(TodoItem rule) {
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       rule.createdDate ?? rule.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final next = TodoRecurrenceDateService.nextDate(start, rule);
     if (next == null) return false;
     final end = rule.recurrenceEndDate;
     if (end == null) return true;
-    return !_dateOnlyEpoch(end)
-        .isBefore(DateTime(next.year, next.month, next.day));
+    return !_dateOnlyEpoch(end).isBefore(CalendarDateMath.dateOnly(next));
   }
 
   static int _compareOccurrences(TodoItem left, TodoItem right) {
@@ -240,16 +240,14 @@ abstract final class TodoRecurrenceDeleteService {
   }
 
   static DateTime _dateOnly(TodoItem todo) {
-    final local = DateTime.fromMillisecondsSinceEpoch(
+    final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
-    return DateTime(local.year, local.month, local.day);
+    );
+    return CalendarDateMath.dateOnly(local);
   }
 
   static DateTime _dateOnlyEpoch(DateTime value) {
-    final local = value.toLocal();
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(value.toLocal());
   }
 
   static String _dayKey(TodoItem todo) {

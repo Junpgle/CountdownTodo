@@ -1,11 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../utils/local_image_provider.dart';
-import '../widgets/floating_glass_control.dart';
+import '../widgets/splash_screen_shell.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends StatelessWidget {
   final VoidCallback onComplete;
   final Map<String, dynamic> content;
 
@@ -16,113 +14,48 @@ class SplashScreen extends StatefulWidget {
   });
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  Timer? _completeTimer;
-  bool _completed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final dynamic rawDuration = widget.content['durationMs'];
+  Widget build(BuildContext context) {
+    final dynamic rawDuration = content['durationMs'];
     final durationMs = rawDuration is int
         ? rawDuration
         : (int.tryParse(rawDuration?.toString() ?? '') ?? 500);
     final safeDurationMs = durationMs.clamp(300, 8000);
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _fadeAnimation = _controller.drive(CurveTween(curve: Curves.easeIn));
-
-    _controller.forward();
-
-    _completeTimer = Timer(
-      Duration(milliseconds: safeDurationMs),
-      _completeOnce,
-    );
-  }
-
-  @override
-  void dispose() {
-    _completeTimer?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final colorScheme = Theme.of(context).colorScheme;
-    final isWide = size.width > 600;
-    final imagePath = widget.content['imagePath'] as String?;
+    final imagePath = content['imagePath'] as String?;
     final hasImage = imagePath != null && localImageExists(imagePath);
 
-    return Scaffold(
-      body: SizedBox(
-        width: size.width,
-        height: size.height,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (hasImage)
-              if (isWide)
-                _buildWideLayout(imagePath, size, pixelRatio)
-              else
-                _buildNarrowLayout(imagePath, size, pixelRatio)
-            else
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0xFF4A90D9), Color(0xFF357ABD)],
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              top: 48,
-              right: 16,
-              child: SafeArea(
-                child: FloatingGlassControl(
-                  height: 48,
-                  borderRadius: 24,
-                  tint: colorScheme.surface,
-                  haloColor: colorScheme.primary,
-                  child: TextButton(
-                    onPressed: _skip,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(72, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      '跳过',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
+    return SplashScreenShell(
+      onComplete: onComplete,
+      fadeDuration: const Duration(milliseconds: 200),
+      displayDuration: Duration(milliseconds: safeDurationMs),
+      startTimerAfterFirstFrame: false,
+      contentBuilder: (context, size, pixelRatio, isWide, fadeAnimation) {
+        if (!hasImage) {
+          return FadeTransition(
+            opacity: fadeAnimation,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF4A90D9), Color(0xFF357ABD)],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
+          );
+        }
+        return isWide
+            ? _buildWideLayout(imagePath, size, pixelRatio, fadeAnimation)
+            : _buildNarrowLayout(imagePath, size, pixelRatio, fadeAnimation);
+      },
     );
   }
 
-  Widget _buildNarrowLayout(String imagePath, Size size, double pixelRatio) {
+  Widget _buildNarrowLayout(
+    String imagePath,
+    Size size,
+    double pixelRatio,
+    Animation<double> fadeAnimation,
+  ) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -132,7 +65,7 @@ class _SplashScreenState extends State<SplashScreen>
           right: 0,
           height: size.height * 0.7,
           child: FadeTransition(
-            opacity: _fadeAnimation,
+            opacity: fadeAnimation,
             child: ClipRect(
               child: localImageWidget(
                 imagePath,
@@ -149,15 +82,12 @@ class _SplashScreenState extends State<SplashScreen>
           right: 0,
           height: size.height * 0.3,
           child: ClipRect(
-            child: Image.asset(
-              'assets/splash/default.webp',
-              width: size.width,
-              height: size.height,
-              cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
-              cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
-              fit: BoxFit.cover,
+            child: SplashDefaultAssetImage(
+              assetName: 'assets/splash/default.webp',
+              size: size,
+              pixelRatio: pixelRatio,
+              fadeAnimation: fadeAnimation,
               alignment: Alignment.bottomCenter,
-              opacity: _fadeAnimation,
             ),
           ),
         ),
@@ -165,7 +95,12 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildWideLayout(String imagePath, Size size, double pixelRatio) {
+  Widget _buildWideLayout(
+    String imagePath,
+    Size size,
+    double pixelRatio,
+    Animation<double> fadeAnimation,
+  ) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -175,7 +110,7 @@ class _SplashScreenState extends State<SplashScreen>
           left: 0,
           width: size.width * 0.6,
           child: FadeTransition(
-            opacity: _fadeAnimation,
+            opacity: fadeAnimation,
             child: ClipRect(
               child: localImageWidget(
                 imagePath,
@@ -192,31 +127,16 @@ class _SplashScreenState extends State<SplashScreen>
           right: 0,
           width: size.width * 0.4,
           child: ClipRect(
-            child: Image.asset(
-              'assets/splash/default_pad.webp',
-              width: size.width,
-              height: size.height,
-              cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
-              cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
-              fit: BoxFit.cover,
+            child: SplashDefaultAssetImage(
+              assetName: 'assets/splash/default_pad.webp',
+              size: size,
+              pixelRatio: pixelRatio,
+              fadeAnimation: fadeAnimation,
               alignment: Alignment.centerRight,
-              opacity: _fadeAnimation,
             ),
           ),
         ),
       ],
     );
-  }
-
-  void _skip() {
-    _controller.stop();
-    _completeOnce();
-  }
-
-  void _completeOnce() {
-    if (_completed || !mounted) return;
-    _completed = true;
-    _completeTimer?.cancel();
-    widget.onComplete();
   }
 }

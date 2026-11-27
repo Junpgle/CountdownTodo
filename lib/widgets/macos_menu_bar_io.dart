@@ -6,7 +6,6 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -23,6 +22,7 @@ import '../screens/settings/pages/data_export_page.dart';
 import '../screens/settings/pages/data_import_page.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import '../utils/app_dialogs.dart';
 
 /// macOS 原生菜单栏包裹组件。
@@ -307,7 +307,7 @@ class MacosMenuBar extends StatelessWidget {
                     side: BorderSide(color: Theme.of(context).dividerColor),
                   ),
                   title: Text(
-                    '目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}',
+                    '目标日期: ${AppTimeFormats.date(selectedDate)}',
                     style: const TextStyle(fontSize: 14),
                   ),
                   trailing: const Icon(Icons.calendar_today, size: 20),

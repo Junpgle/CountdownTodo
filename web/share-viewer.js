@@ -1,5 +1,9 @@
 (function () {
-  var API_BASE = 'https://api-cdt.junpgle.me';
+  var API_BASE =
+    window.CDT_SHARE_API_BASE ||
+    (typeof window.cdtShareApiBase === 'function'
+      ? window.cdtShareApiBase()
+      : 'https://api-cdt.junpgle.me');
   var root = document.getElementById('share-root');
   if (!root) return;
 
@@ -7,6 +11,8 @@
     code: window.cdtShareCode || '',
     token: null,
     loading: true,
+    loadingHistory: false,
+    includeHistory: false,
     needsPassword: false,
     verifying: false,
     error: '',
@@ -137,12 +143,18 @@
       '    <p>' + esc(state.error || '加载失败，请稍后重试') + '</p>' +
       '    <div style="margin-top:20px;display:flex;flex-direction:column;gap:10px;">' +
       '      <button class="cdt-btn" id="cdt-retry-btn" type="button">重新加载</button>' +
-      '      <button class="cdt-btn cdt-btn-secondary" id="cdt-full-app-btn" type="button">打开完整版网页 App</button>' +
+      (window.cdtOpenFullApp
+        ? '      <button class="cdt-btn cdt-btn-secondary" id="cdt-full-app-btn" type="button">打开完整版网页 App</button>'
+        : '') +
       '    </div>' +
       '  </div>' +
       '</div>';
     var retryBtn = document.getElementById('cdt-retry-btn');
-    if (retryBtn) retryBtn.addEventListener('click', loadData);
+    if (retryBtn) {
+      retryBtn.addEventListener('click', function () {
+        loadData({ forceNetwork: true });
+      });
+    }
     var fullBtn = document.getElementById('cdt-full-app-btn');
     if (fullBtn && window.cdtOpenFullApp) {
       fullBtn.addEventListener('click', window.cdtOpenFullApp);
@@ -176,6 +188,18 @@
         verifyPassword(input ? input.value.trim() : '');
       });
     }
+  }
+
+  function renderLoadAllHistoryBtn(truncated, label) {
+    if (!truncated || truncated <= 0) return '';
+    return (
+      '<button class="cdt-load-more-btn" type="button" data-load-history="1"' +
+      (state.loadingHistory ? ' disabled' : '') + '>' +
+      (state.loadingHistory
+        ? '正在加载全部历史…'
+        : '加载全部' + esc(label) + '（还有 ' + truncated + ' 条）') +
+      '</button>'
+    );
   }
 
   function renderAnnouncements(announcements) {
@@ -224,8 +248,9 @@
     );
   }
 
-  function renderSchedules(schedules) {
-    if (!schedules.length) return '';
+  function renderSchedules(schedules, meta) {
+    var totalCount = (meta && typeof meta.total === 'number') ? meta.total : schedules.length;
+    if (!totalCount && !schedules.length) return '';
     var nowMs = Date.now();
     var active = [];
     var ended = [];
@@ -234,21 +259,28 @@
       else active.push(item);
     });
 
+    var truncated = (meta && typeof meta.truncated === 'number') ? meta.truncated : 0;
+    var endedTotal = (meta && typeof meta.ended_total === 'number') ? meta.ended_total : ended.length;
+
     var activeHtml = active.length
       ? '<div class="cdt-list">' + active.map(renderScheduleItem).join('') + '</div>'
       : '<div class="cdt-item-meta">暂无进行中或即将开始的日程</div>';
 
-    var endedHtml = ended.length
-      ? '<details class="cdt-details"><summary>已结束日程 (' + ended.length + ')</summary><div class="cdt-list" style="margin-top:8px;">' +
+    var endedSummary = truncated > 0
+      ? '已结束日程 (已显示最近 ' + ended.length + ' 条，共 ' + endedTotal + ' 条)'
+      : '已结束日程 (' + ended.length + ')';
+
+    var endedHtml = (ended.length || truncated > 0)
+      ? '<details class="cdt-details" id="cdt-details-schedules"><summary>' + endedSummary + '</summary><div class="cdt-list" style="margin-top:8px;">' +
         ended.map(renderScheduleItem).join('') +
-        '</div></details>'
+        '</div>' + renderLoadAllHistoryBtn(truncated, '历史日程') + '</details>'
       : '';
 
     return (
       '<section class="cdt-card cdt-section">' +
       '  <div class="cdt-section-head">' +
       '    <h2 class="cdt-section-title">团队日程</h2>' +
-      '    <span class="cdt-count-badge">' + schedules.length + '</span>' +
+      '    <span class="cdt-count-badge">' + totalCount + '</span>' +
       '  </div>' +
       activeHtml +
       endedHtml +
@@ -281,8 +313,9 @@
     );
   }
 
-  function renderCountdowns(countdowns) {
-    if (!countdowns.length) return '';
+  function renderCountdowns(countdowns, meta) {
+    var totalCount = (meta && typeof meta.total === 'number') ? meta.total : countdowns.length;
+    if (!totalCount && !countdowns.length) return '';
     var now = new Date();
     var startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     var active = [];
@@ -292,21 +325,28 @@
       else active.push(c);
     });
 
+    var truncated = (meta && typeof meta.truncated === 'number') ? meta.truncated : 0;
+    var pastTotal = (meta && typeof meta.past_total === 'number') ? meta.past_total : past.length;
+
     var activeHtml = active.length
       ? '<div class="cdt-list">' + active.map(renderCountdownItem).join('') + '</div>'
       : '<div class="cdt-item-meta">暂无进行中的倒计时</div>';
 
-    var pastHtml = past.length
-      ? '<details class="cdt-details"><summary>已经过 / 已完成倒计时 (' + past.length + ')</summary><div class="cdt-list" style="margin-top:8px;">' +
+    var pastSummary = truncated > 0
+      ? '已经过 / 已完成倒计时 (已显示最近 ' + past.length + ' 条，共 ' + pastTotal + ' 条)'
+      : '已经过 / 已完成倒计时 (' + past.length + ')';
+
+    var pastHtml = (past.length || truncated > 0)
+      ? '<details class="cdt-details" id="cdt-details-countdowns"><summary>' + pastSummary + '</summary><div class="cdt-list" style="margin-top:8px;">' +
         past.map(renderCountdownItem).join('') +
-        '</div></details>'
+        '</div>' + renderLoadAllHistoryBtn(truncated, '历史倒计时') + '</details>'
       : '';
 
     return (
       '<section class="cdt-card cdt-section">' +
       '  <div class="cdt-section-head">' +
       '    <h2 class="cdt-section-title">倒计时</h2>' +
-      '    <span class="cdt-count-badge">' + countdowns.length + '</span>' +
+      '    <span class="cdt-count-badge">' + totalCount + '</span>' +
       '  </div>' +
       activeHtml +
       pastHtml +
@@ -473,8 +513,9 @@
     return blocks.join('');
   }
 
-  function renderTodos(todos, groups) {
-    if (!todos.length) return '';
+  function renderTodos(todos, groups, meta) {
+    var totalCount = (meta && typeof meta.total === 'number') ? meta.total : todos.length;
+    if (!totalCount && !todos.length) return '';
     var now = new Date();
     var nowMs = now.getTime();
     var startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -490,27 +531,33 @@
       else active.push(entry);
     });
 
+    var truncated = (meta && typeof meta.truncated === 'number') ? meta.truncated : 0;
+
     var activeHtml = active.length
       ? renderTodoGroups(active, groups, nowMs)
       : '<div class="cdt-item-meta">暂无进行中的待办</div>';
 
     var pastHtml = pastOrOverdue.length
-      ? '<details class="cdt-details"><summary>已逾期 / 历史待办 (' + pastOrOverdue.length + ')</summary><div style="margin-top:8px;">' +
+      ? '<details class="cdt-details" id="cdt-details-todos-past"><summary>已逾期 / 历史待办 (' + pastOrOverdue.length + ')</summary><div style="margin-top:8px;">' +
         renderTodoGroups(pastOrOverdue, groups, nowMs) +
         '</div></details>'
       : '';
 
-    var doneHtml = completed.length
-      ? '<details class="cdt-details"><summary>已完成待办 (' + completed.length + ')</summary><div style="margin-top:8px;">' +
+    var doneSummary = truncated > 0
+      ? '已完成待办 (已显示最近 ' + completed.length + ' 条，还有 ' + truncated + ' 条更早记录)'
+      : '已完成待办 (' + completed.length + ')';
+
+    var doneHtml = (completed.length || truncated > 0)
+      ? '<details class="cdt-details" id="cdt-details-todos-done"><summary>' + doneSummary + '</summary><div style="margin-top:8px;">' +
         renderTodoGroups(completed, groups, nowMs) +
-        '</div></details>'
+        '</div>' + renderLoadAllHistoryBtn(truncated, '历史待办') + '</details>'
       : '';
 
     return (
       '<section class="cdt-card cdt-section">' +
       '  <div class="cdt-section-head">' +
       '    <h2 class="cdt-section-title">团队待办</h2>' +
-      '    <span class="cdt-count-badge">' + todos.length + '</span>' +
+      '    <span class="cdt-count-badge">' + totalCount + '</span>' +
       '  </div>' +
       activeHtml +
       pastHtml +
@@ -544,9 +591,18 @@
     );
   }
 
-  function renderDashboard() {
+  function collectOpenDetailIds() {
+    var ids = [];
+    document.querySelectorAll('details.cdt-details[open]').forEach(function (el) {
+      if (el.id) ids.push(el.id);
+    });
+    return ids;
+  }
+
+  function renderDashboard(openDetailIds) {
     var d = state.data || {};
     var share = d.share || {};
+    var meta = d.history_meta || {};
     var teamName = (d.team && d.team.name) ? d.team.name : '未知团队';
     var shareTitle = share.title || teamName;
     var shareDesc = share.description || '';
@@ -556,21 +612,25 @@
     var countdowns = Array.isArray(d.countdowns) ? d.countdowns : [];
     var announcements = Array.isArray(d.announcements) ? d.announcements : [];
 
-    var hasAny = todos.length || schedules.length || countdowns.length || announcements.length;
+    var totalTodos = (meta.todos && typeof meta.todos.total === 'number') ? meta.todos.total : todos.length;
+    var totalSchedules = (meta.schedules && typeof meta.schedules.total === 'number') ? meta.schedules.total : schedules.length;
+    var totalCountdowns = (meta.countdowns && typeof meta.countdowns.total === 'number') ? meta.countdowns.total : countdowns.length;
+
+    var hasAny = totalTodos || totalSchedules || totalCountdowns || announcements.length;
 
     var leftCol = [
       renderAnnouncements(announcements),
-      renderSchedules(schedules),
-      renderCountdowns(countdowns)
+      renderSchedules(schedules, meta.schedules),
+      renderCountdowns(countdowns, meta.countdowns)
     ].filter(Boolean).join('');
 
-    var rightCol = renderTodos(todos, groups);
+    var rightCol = renderTodos(todos, groups, meta.todos);
     var hasTwoCols = Boolean(leftCol && rightCol);
 
     var stats = [];
-    if (share.share_todos) stats.push('<div class="cdt-stat-pill">待办 <span>' + todos.length + '</span></div>');
-    if (share.share_schedules) stats.push('<div class="cdt-stat-pill">日程 <span>' + schedules.length + '</span></div>');
-    if (share.share_countdowns) stats.push('<div class="cdt-stat-pill">倒计时 <span>' + countdowns.length + '</span></div>');
+    if (share.share_todos) stats.push('<div class="cdt-stat-pill">待办 <span>' + totalTodos + '</span></div>');
+    if (share.share_schedules) stats.push('<div class="cdt-stat-pill">日程 <span>' + totalSchedules + '</span></div>');
+    if (share.share_countdowns) stats.push('<div class="cdt-stat-pill">倒计时 <span>' + totalCountdowns + '</span></div>');
     if (share.share_announcements) stats.push('<div class="cdt-stat-pill">公告 <span>' + announcements.length + '</span></div>');
 
     document.title = shareTitle + ' · CountDownTodo';
@@ -582,7 +642,9 @@
       '      <div class="cdt-hero-team-pill">' + esc(teamName) + '</div>' +
       '      <div class="cdt-hero-actions">' +
       '        <button class="cdt-icon-btn" id="cdt-refresh-btn" type="button">↻ 刷新</button>' +
-      '        <button class="cdt-icon-btn" id="cdt-open-full-btn" type="button">打开完整版</button>' +
+      (window.cdtOpenFullApp
+        ? '        <button class="cdt-icon-btn" id="cdt-open-full-btn" type="button">打开完整版</button>'
+        : '') +
       '      </div>' +
       '    </div>' +
       '    <h1 class="cdt-hero-title">' + esc(shareTitle) + '</h1>' +
@@ -606,8 +668,19 @@
       '<button class="cdt-fab" id="cdt-join-btn" type="button">＋ 申请加入团队</button>' +
       renderJoinModal();
 
+    if (Array.isArray(openDetailIds)) {
+      openDetailIds.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.open = true;
+      });
+    }
+
     var refreshBtn = document.getElementById('cdt-refresh-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', loadData);
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function () {
+        loadData({ forceNetwork: true });
+      });
+    }
 
     var openFullBtn = document.getElementById('cdt-open-full-btn');
     if (openFullBtn && window.cdtOpenFullApp) {
@@ -619,7 +692,7 @@
       joinBtn.addEventListener('click', function () {
         state.joinOpen = true;
         state.joinError = '';
-        render();
+        render(collectOpenDetailIds());
       });
     }
 
@@ -627,7 +700,7 @@
     if (cancelBtn) {
       cancelBtn.addEventListener('click', function () {
         state.joinOpen = false;
-        render();
+        render(collectOpenDetailIds());
       });
     }
 
@@ -636,7 +709,7 @@
       backdrop.addEventListener('click', function (e) {
         if (e.target === backdrop) {
           state.joinOpen = false;
-          render();
+          render(collectOpenDetailIds());
         }
       });
     }
@@ -650,43 +723,112 @@
         submitJoin(emailEl ? emailEl.value.trim() : '', msgEl ? msgEl.value.trim() : '');
       });
     }
+
+    root.querySelectorAll('[data-load-history]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (state.loadingHistory) return;
+        var openIds = collectOpenDetailIds();
+        var parentDetails = btn.closest('details');
+        if (parentDetails && parentDetails.id && openIds.indexOf(parentDetails.id) === -1) {
+          openIds.push(parentDetails.id);
+        }
+        state.includeHistory = true;
+        state.loadingHistory = true;
+        render(openIds);
+        loadData({
+          forceNetwork: true,
+          includeHistory: true,
+          keepDashboard: true,
+          openDetailIds: openIds
+        });
+      });
+    });
   }
 
-  function render() {
-    if (state.loading) return renderLoading();
+  function render(openDetailIds) {
+    if (state.loading && !state.data) return renderLoading();
     if (state.needsPassword) return renderPassword();
-    if (state.error) return renderError();
-    return renderDashboard();
+    if (state.error && !state.data) return renderError();
+    return renderDashboard(openDetailIds);
   }
 
-  function loadData() {
-    state.loading = true;
-    state.error = '';
-    render();
-
-    var url = API_BASE + '/api/shares/' + encodeURIComponent(state.code) + '/data';
-    if (state.token) {
-      url += '?token=' + encodeURIComponent(state.token);
+  function handleDataResponse(json, opts) {
+    state.loading = false;
+    state.loadingHistory = false;
+    if (json && json.success) {
+      state.needsPassword = false;
+      state.data = json;
+    } else if (json && json.error === 'Password required') {
+      state.needsPassword = true;
+    } else {
+      if (!opts.keepDashboard) {
+        state.error = (json && json.error) || '加载失败';
+      } else {
+        showToast((json && json.error) || '加载失败');
+      }
     }
+    render(opts.openDetailIds);
+  }
+
+  function loadData(opts) {
+    opts = opts || {};
+    var includeHistory = opts.includeHistory !== undefined
+      ? Boolean(opts.includeHistory)
+      : state.includeHistory;
+
+    if (!opts.forceNetwork && !includeHistory && !state.token) {
+      if (window.__CDT_INITIAL_SHARE_DATA__) {
+        var embedded = window.__CDT_INITIAL_SHARE_DATA__;
+        window.__CDT_INITIAL_SHARE_DATA__ = null;
+        handleDataResponse(embedded, opts);
+        return;
+      }
+
+      var prefetched = window.__cdtSharePrefetch;
+      if (prefetched && prefetched.code === state.code && !prefetched.consumed && prefetched.promise) {
+        prefetched.consumed = true;
+        state.loading = true;
+        state.error = '';
+        render();
+        prefetched.promise
+          .then(function (json) { handleDataResponse(json, opts); })
+          .catch(function () {
+            state.loading = false;
+            state.error = '网络请求失败，请检查网络连接';
+            render();
+          });
+        return;
+      }
+    }
+
+    if (!opts.keepDashboard) {
+      state.loading = true;
+      state.error = '';
+      render();
+    }
+
+    var params = ['tz_offset=' + encodeURIComponent(String(new Date().getTimezoneOffset()))];
+    if (state.token) {
+      params.push('token=' + encodeURIComponent(state.token));
+    }
+    if (includeHistory) {
+      params.push('include_history=1');
+    }
+
+    var url = API_BASE + '/api/shares/' + encodeURIComponent(state.code) + '/data?' + params.join('&');
 
     fetch(url, { method: 'GET' })
       .then(function (res) { return res.json(); })
-      .then(function (json) {
-        state.loading = false;
-        if (json && json.success) {
-          state.needsPassword = false;
-          state.data = json;
-        } else if (json && json.error === 'Password required') {
-          state.needsPassword = true;
-        } else {
-          state.error = (json && json.error) || '加载失败';
-        }
-        render();
-      })
+      .then(function (json) { handleDataResponse(json, opts); })
       .catch(function () {
         state.loading = false;
-        state.error = '网络请求失败，请检查网络连接';
-        render();
+        state.loadingHistory = false;
+        if (!opts.keepDashboard) {
+          state.error = '网络请求失败，请检查网络连接';
+        } else {
+          showToast('网络请求失败，请稍后重试');
+        }
+        render(opts.openDetailIds);
       });
   }
 
@@ -707,7 +849,7 @@
         if (json && json.success && !json.requires_password) {
           state.token = json.access_token || null;
           state.needsPassword = false;
-          loadData();
+          loadData({ forceNetwork: true });
         } else {
           state.passwordError = (json && json.error) || '密码错误';
           render();
@@ -723,12 +865,12 @@
   function submitJoin(email, message) {
     if (!email) {
       state.joinError = '请输入邮箱';
-      render();
+      render(collectOpenDetailIds());
       return;
     }
     state.joinSubmitting = true;
     state.joinError = '';
-    render();
+    render(collectOpenDetailIds());
 
     var joinBody = { email: email, message: message };
     if (state.token) {
@@ -749,19 +891,25 @@
         state.joinSubmitting = false;
         if (json && json.success) {
           state.joinOpen = false;
-          render();
+          render(collectOpenDetailIds());
           showToast('申请已提交，请等待管理员审批');
         } else {
           state.joinError = (json && json.error) || '提交失败';
-          render();
+          render(collectOpenDetailIds());
         }
       })
       .catch(function () {
         state.joinSubmitting = false;
         state.joinError = '网络请求失败，请重试';
-        render();
+        render(collectOpenDetailIds());
       });
   }
 
-  loadData();
+  if (state.code) {
+    loadData();
+  } else {
+    state.loading = false;
+    state.error = '缺少分享码';
+    render();
+  }
 })();

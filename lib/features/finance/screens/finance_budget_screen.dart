@@ -2,16 +2,17 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../services/finance_sync_service.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class FinanceBudgetScreen extends StatefulWidget {
   final DateTime? initialMonth;
@@ -27,7 +28,11 @@ class FinanceBudgetScreen extends StatefulWidget {
   State<FinanceBudgetScreen> createState() => _FinanceBudgetScreenState();
 }
 
-class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
+class _FinanceBudgetScreenState extends State<FinanceBudgetScreen>
+    with FinanceRevisionRefreshMixin<FinanceBudgetScreen> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   late DateTime _month;
   List<FinanceBudget> _budgets = const [];
   List<FinanceBudget> _balanceSnapshots = const [];
@@ -44,7 +49,6 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   List<FinancePaymentMethod>? _paymentMethodCacheSource;
   Map<String, FinancePaymentMethod> _paymentMethodMapCache = const {};
   final Map<String, String> _paymentMethodDisplayNames = {};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool? _balanceSyncSupported;
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
@@ -52,31 +56,23 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   int _loadGeneration = 0;
   Timer? _balanceRefreshTimer;
 
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
-
   @override
   void initState() {
     super.initState();
     final initial = widget.initialMonth ?? widget.clock();
     _month = DateTime(initial.year, initial.month);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
   void dispose() {
     _balanceRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
-  void _onFinanceChanged() => _load(showLoading: false);
+  @override
+  void onFinanceRevisionRefresh() => _load(showLoading: false);
 
   void _ensureCategoryCaches() {
     if (identical(_categoryCacheSource, _categories)) return;
@@ -145,8 +141,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     return _month.year == now.year && _month.month == now.month;
   }
 
-  String get _monthLabel =>
-      _isCurrentMonth ? '本月' : _cachedDateFormat('yyyy年M月').format(_month);
+  String get _monthLabel => _isCurrentMonth
+      ? '本月'
+      : AppTimeFormats.dateFormatter('yyyy年M月').format(_month);
 
   String get _paymentBalanceSectionTitle {
     if (_isCurrentMonth) return '付款方式实时余额';
@@ -388,7 +385,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     String? paymentMethodUuid,
   ]) async {
     final editorMonth = budget?.isPaymentMethod == true
-        ? DateFormat('yyyy-MM').parseStrict(budget!.monthKey)
+        ? AppTimeFormats.dateFormatter('yyyy-MM').parseStrict(budget!.monthKey)
         : _month;
     final result = await Navigator.of(context).push<FinanceBudget>(
       MaterialPageRoute(
@@ -464,24 +461,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final warning = budget.isPaymentMethod
         ? '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。'
         : '删除预算记录不会影响已有账单。';
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除$itemName？'),
-        content: Text(warning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除$itemName？',
+      message: warning,
+      confirmLabel: '删除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await FinanceRepository.deleteBudget(budget.uuid);
     } catch (error) {
@@ -614,7 +600,17 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonDashboardPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 1040,
+                showPeriodHeader: true,
+                showMetricGrid: true,
+                showChart: false,
+                listCount: 4,
+                wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+                wideBreakpoint: 640,
+                wideListColumns: 2,
+              )
             : _loadError != null
             ? _buildError(colorScheme)
             : RefreshIndicator(
@@ -903,7 +899,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       budget.effectiveBalanceSnapshotAt,
     );
     final balanceSnapshotDateFormat = budget.isPaymentMethod
-        ? _cachedDateFormat('yyyy年M月d日 HH:mm')
+        ? AppTimeFormats.dateFormatter('yyyy年M月d日 HH:mm')
         : null;
     final progress = budget.amountMinor == 0
         ? 0.0

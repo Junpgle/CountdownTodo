@@ -13,6 +13,7 @@ import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
+import 'optional_liquid_glass_backdrop.dart';
 import 'platform_backdrop_filter.dart';
 
 import 'dart:async';
@@ -475,9 +476,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
               onTap: _close,
               child: isDesktop
                   ? Container(color: desktopOverlayColor)
-                  : PlatformBackdropFilter(
-                      filter: AppImageFilters.blur15,
-                      child: Container(color: mobileBackdropColor),
+                  : OptionalLiquidGlassBackdropScope(
+                      isSolidBackground: false,
+                      child: PlatformBackdropFilter(
+                        filter: AppImageFilters.blur15,
+                        child: Container(color: mobileBackdropColor),
+                      ),
                     ),
             ),
             // ── 内容 ──

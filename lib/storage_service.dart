@@ -5,7 +5,6 @@ import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
@@ -33,6 +32,7 @@ import 'services/storage/pomodoro_storage.dart';
 import 'services/storage/storage_conflict_cleanup.dart';
 import 'services/storage/storage_key_scope.dart';
 import 'services/storage/user_session_storage.dart';
+import 'utils/async_json.dart';
 import 'utils/calendar_date_math.dart';
 import 'utils/json_value_parser.dart';
 import 'utils/time_utils.dart' as time_utils;
@@ -43,11 +43,20 @@ import 'features/habits/models/habit_drink_option.dart';
 import 'features/habits/models/habit_sleep_coaching_plan.dart';
 import 'features/habits/services/habit_sync_conflict_service.dart';
 import 'features/finance/services/finance_sync_service.dart';
+import 'utils/text_utils.dart';
 
 part 'storage_service_fixed.dart';
 part 'storage_service_core.dart';
 part 'storage_service_todos.dart';
+part 'storage_service_todos_conflicts.dart';
+part 'storage_service_todos_queries.dart';
+part 'storage_service_todos_recurrence.dart';
+part 'storage_service_screen_time.dart';
 part 'storage_service_sync.dart';
+part 'storage_service_sync_prepare.dart';
+part 'storage_service_sync_network.dart';
+part 'storage_service_sync_merge.dart';
+part 'storage_service_sync_persist.dart';
 part 'storage_service_conflict.dart';
 part 'storage_service_settings.dart';
 part 'storage_service_contract.dart';
@@ -651,10 +660,7 @@ class StorageService {
     FixedScheduleItem baseline, {
     bool sync = true,
   }) async {
-    String? normalizeTeam(String? value) {
-      final normalized = value?.trim();
-      return normalized == null || normalized.isEmpty ? null : normalized;
-    }
+    String? normalizeTeam(String? value) => AppTextUtils.trimToNull(value);
 
     if (todo.id.trim().isEmpty ||
         todo.isDone ||

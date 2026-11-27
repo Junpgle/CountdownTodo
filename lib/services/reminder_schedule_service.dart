@@ -3,11 +3,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../features/finance/services/finance_automation_service.dart';
 import '../storage_service.dart';
+import '../utils/time_utils.dart';
 import 'course_service.dart';
 import 'item_semantics_service.dart';
+import 'countdown_reminder_helper.dart';
 import 'notification_service.dart';
 import 'scheduled_reminder_registry.dart';
 import 'storage/user_session_storage.dart';
+import '../utils/calendar_date_math.dart';
 
 /// 保活提醒调度服务
 ///
@@ -101,10 +104,9 @@ class ReminderScheduleService {
       final lastRelevantCourseStart = limit.add(
         Duration(minutes: loadedCourseReminderMinutes),
       );
-      final courseDateEndExclusive = DateTime(
-        lastRelevantCourseStart.year,
-        lastRelevantCourseStart.month,
-        lastRelevantCourseStart.day + 1,
+      final courseDateEndExclusive = AppTimeFormats.localDayStartOffset(
+        lastRelevantCourseStart,
+        1,
       );
       scheduledCourses = await loadCourses(now, courseDateEndExclusive);
     }
@@ -144,13 +146,10 @@ class ReminderScheduleService {
       DateTime? dateOnlyDayStart;
       if (t.isDateOnly) {
         final date = t.effectiveStartTime;
-        dateOnlyDayStart = DateTime(date.year, date.month, date.day);
+        dateOnlyDayStart = CalendarDateMath.dateOnly(date);
         refTime = DateTime(date.year, date.month, date.day, 23, 59);
       } else if (t.createdDate != null && t.createdDate! > 0) {
-        refTime = DateTime.fromMillisecondsSinceEpoch(
-          t.createdDate!,
-          isUtc: true,
-        ).toLocal();
+        refTime = AppTimeFormats.localFromServerTimestamp(t.createdDate!);
       } else if (t.dueDate != null) {
         refTime = t.dueDate!.toLocal();
       }
@@ -184,8 +183,8 @@ class ReminderScheduleService {
           final label = _getSpecialTodoLabel(todoType);
 
           reminders.add({
-            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-            'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
+            'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+            'startAtMs': AppTimeFormats.toServerTimestamp(refTime),
             'title': '$label ${t.title}',
             'text': t.remark?.isNotEmpty == true
                 ? '${t.remark!} · $timeText'
@@ -203,8 +202,8 @@ class ReminderScheduleService {
           final description = t.remark?.isNotEmpty == true ? t.remark! : '即将开始';
 
           reminders.add({
-            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-            'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
+            'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+            'startAtMs': AppTimeFormats.toServerTimestamp(refTime),
             'title': '⏰ ${t.title}',
             'text': '$description · $timeText',
             'notifId': _todoBaseId + i,
@@ -250,12 +249,12 @@ class ReminderScheduleService {
             c.endTime ~/ 100,
             c.endTime % 100,
           );
-          final courseStartMs = courseStart.toUtc().millisecondsSinceEpoch;
-          final courseEndMs = courseEnd.toUtc().millisecondsSinceEpoch;
+          final courseStartMs = AppTimeFormats.toServerTimestamp(courseStart);
+          final courseEndMs = AppTimeFormats.toServerTimestamp(courseEnd);
           final courseStartText = _hm(courseStart);
           final courseTimeRange = '$courseStartText - ${_hm(courseEnd)}';
           reminders.add({
-            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
             'startAtMs': courseStartMs,
             'courseStartMs': courseStartMs,
             'courseEndMs': courseEndMs,
@@ -325,8 +324,8 @@ class ReminderScheduleService {
         final endTime = DateTime.fromMillisecondsSinceEpoch(pb.endTime);
         final timeRange = '${_hm(startTime)} - ${_hm(endTime)}';
         reminders.add({
-          'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-          'startAtMs': startTime.toUtc().millisecondsSinceEpoch,
+          'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+          'startAtMs': AppTimeFormats.toServerTimestamp(startTime),
           'title': '📅 计划: ${pb.titleSnapshot ?? "未命名任务"}',
           'text': '$timeRange${pb.remark != null ? " · ${pb.remark}" : ""}',
           'notifId': _planBlockBaseId + i,
@@ -348,11 +347,14 @@ class ReminderScheduleService {
     // ── 倒计时当天 08:00 提醒 ──────────────────────────────────────────
     final effectiveCountdowns =
         countdowns ?? await StorageService.getCountdowns(effectiveUsername);
+    final dismissedCountdownKeys =
+        await CountdownReminderPrefs.getDismissedKeys();
     reminders.addAll(
       buildCountdownReminders(
         countdowns: effectiveCountdowns,
         now: now,
         limit: limit,
+        dismissedDateKeys: dismissedCountdownKeys,
       ),
     );
 
@@ -397,6 +399,7 @@ class ReminderScheduleService {
     required List<CountdownItem> countdowns,
     required DateTime now,
     required DateTime limit,
+    Set<String> dismissedDateKeys = const <String>{},
   }) {
     final reminders = <Map<String, dynamic>>[];
     for (var i = 0; i < countdowns.length && i < 999; i++) {
@@ -413,6 +416,13 @@ class ReminderScheduleService {
       );
       if (!triggerAt.isAfter(now) || triggerAt.isAfter(limit)) continue;
 
+      final dateStr = AppTimeFormats.date(targetLocal);
+      if (dismissedDateKeys.contains(
+        CountdownReminderHelper.dismissedStorageKey(countdown.id, dateStr),
+      )) {
+        continue;
+      }
+
       final endOfDay = DateTime(
         targetLocal.year,
         targetLocal.month,
@@ -425,12 +435,10 @@ class ReminderScheduleService {
       );
       final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
       final label = ItemSemanticsService.countdownCategoryLabel(category);
-      final dateStr =
-          '${targetLocal.year}-${targetLocal.month.toString().padLeft(2, '0')}-${targetLocal.day.toString().padLeft(2, '0')}';
 
       reminders.add({
-        'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-        'startAtMs': endOfDay.toUtc().millisecondsSinceEpoch,
+        'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+        'startAtMs': AppTimeFormats.toServerTimestamp(endOfDay),
         'title': '$emoji ${countdown.title}',
         'text': '$label就在今天 · $dateStr',
         'notifId': _countdownBaseId + i,
@@ -438,6 +446,7 @@ class ReminderScheduleService {
         'countdownCategory': category,
         'countdownId': countdown.id,
         'countdownTitle': countdown.title,
+        'countdownDateStr': dateStr,
         'timeStr': '今天 08:00',
       });
     }
@@ -524,8 +533,8 @@ class ReminderScheduleService {
           continue;
         }
         reminders.add({
-          'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-          'startAtMs': start.toUtc().millisecondsSinceEpoch,
+          'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+          'startAtMs': AppTimeFormats.toServerTimestamp(start),
           'title': reminderTitle,
           'text': reminderText,
           'notifId':
@@ -541,8 +550,7 @@ class ReminderScheduleService {
     return reminders;
   }
 
-  static String _hm(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  static String _hm(DateTime dt) => AppTimeFormats.clock(dt);
 
   /// 提前提醒时间已过但事项尚未开始时仍应保留，供灵动岛立即补发。
   static bool shouldSchedulePreStart({

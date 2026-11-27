@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/todo_create_save_result.dart';
@@ -33,16 +32,6 @@ String _lessonTypeLabel(String? type) {
   if (type == 'EXPERIMENT') return '实验';
   if (type == 'THEORY') return '理论';
   return type?.trim() ?? '';
-}
-
-final Map<(String?, String), DateFormat> _courseSectionDateFormats = {};
-
-DateFormat _courseSectionDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _courseSectionDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
 }
 
 // ─────────────────────────────────────────────
@@ -351,7 +340,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final tomorrowFixedSchedules = results[3] as List<FixedScheduleItem>;
     final allCourses = results[4] as List<CourseItem>;
     final deviceCalendarEvents = results[5] as List<DeviceCalendarEvent>;
-    final dateFormat = _courseSectionDateFormat('yyyy-MM-dd');
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     final today = dateFormat.format(now);
     final tomorrow = dateFormat.format(tomorrowStart);
 
@@ -476,7 +465,8 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final fallbackToday = _courseSectionDateFormat('yyyy-MM-dd').format(now);
+    final fallbackToday = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+        .format(now);
     final fallbackCourses = widget.courses
         .where((course) => course.date == fallbackToday)
         .toList();
@@ -533,14 +523,11 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
               onTap: () => setState(() => _showEnded = !_showEnded),
             ),
             if (_showEnded)
-              Opacity(
-                opacity: 0.58,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: endedItems
-                      .map(_buildItemCard)
-                      .toList(growable: false),
-                ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: endedItems
+                    .map((item) => _buildItemCard(item, isDimmed: true))
+                    .toList(growable: false),
               ),
           ],
           if (showingTomorrow)
@@ -577,12 +564,13 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     );
   }
 
-  Widget _buildItemCard(_TodayScheduleItem item) {
+  Widget _buildItemCard(_TodayScheduleItem item, {bool isDimmed = false}) {
     final course = item.course;
     if (course != null) {
       return _CourseCompactCard(
         course: course,
         isLight: widget.isLight,
+        isDimmed: isDimmed,
         onTap: (cardKey) => widget.onCourseTap(course, cardKey),
       );
     }
@@ -592,6 +580,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       return _FixedScheduleCompactCard(
         item: fixedSchedule,
         isLight: widget.isLight,
+        isDimmed: isDimmed,
         cardKey: fixedScheduleCardKey,
         onTap: (cardKey) async {
           final result = await PageTransitions.pushFromRect<FixedScheduleItem>(
@@ -618,6 +607,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       return _TodoCompactCard(
         todo: todo,
         isLight: widget.isLight,
+        isDimmed: isDimmed,
         onTap: (cardKey) => PageTransitions.pushFromRect(
           context: context,
           page: TodoDetailScreen(
@@ -634,6 +624,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       return _DeviceCalendarCompactCard(
         event: deviceEvent,
         isLight: widget.isLight,
+        isDimmed: isDimmed,
         onTap: (cardKey) => PageTransitions.pushFromRect(
           context: context,
           page: DeviceCalendarEventDetailScreen(event: deviceEvent),
@@ -645,6 +636,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     return _PlanCompactCard(
       block: item.block!,
       isLight: widget.isLight,
+      isDimmed: isDimmed,
       onTap: () => Navigator.of(context).push(
         PageTransitions.material(
           builder: (_) => TodoPlanScreen(username: widget.username),
@@ -687,7 +679,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   }
 
   bool _isSameLocalDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+    return AppTimeFormats.isSameDay(a, b);
   }
 }
 
@@ -722,36 +714,42 @@ class _EndedScheduleSummary extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Icon(
-                  expanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  size: 17,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '已结束 $count 项',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+          child: MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Icon(
+                      expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 17,
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
-                Text(
-                  expanded ? '收起' : '展开',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '已结束 $count 项',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  Text(
+                    expanded ? '收起' : '展开',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.72,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -780,6 +778,10 @@ class _TodayScheduleSkeleton extends StatelessWidget {
       ),
     );
   }
+}
+
+Color _dimScheduleColor(Color color, bool isDimmed) {
+  return isDimmed ? color.withValues(alpha: color.a * 0.58) : color;
 }
 
 class _ScheduleTimeColumn extends StatelessWidget {
@@ -827,10 +829,12 @@ class _DeviceCalendarCompactCard extends StatefulWidget {
     required this.event,
     required this.isLight,
     required this.onTap,
+    this.isDimmed = false,
   });
 
   final DeviceCalendarEvent event;
   final bool isLight;
+  final bool isDimmed;
   final void Function(GlobalKey cardKey) onTap;
 
   @override
@@ -845,21 +849,27 @@ class _DeviceCalendarCompactCardState
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final accent = widget.event.colorValue == null
+    final dimmed = widget.isDimmed;
+    final baseAccent = widget.event.colorValue == null
         ? colors.tertiary
         : Color(widget.event.colorValue!);
-    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final accent = _dimScheduleColor(baseAccent, dimmed);
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final timeStart = timeFormat.format(widget.event.start);
     final timeEnd = timeFormat.format(widget.event.end);
     return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
-      tint: accent.withValues(alpha: 0.14),
+      tint: accent.withValues(alpha: dimmed ? 0.08 : 0.14),
       fallbackDecoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
+        color: colors.surface.withValues(
+          alpha: (widget.isLight ? 0.97 : 0.75) * (dimmed ? 0.72 : 1.0),
+        ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.22)),
+        border: Border.all(
+          color: baseAccent.withValues(alpha: dimmed ? 0.12 : 0.22),
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -867,89 +877,101 @@ class _DeviceCalendarCompactCardState
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onTap(_cardKey),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 38,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(2),
+          child: MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 3,
+                      height: 38,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: widget.event.allDay
-                      ? Text(
-                          '全天',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: accent,
-                            height: 1.2,
+                  SizedBox(
+                    width: 50,
+                    child: widget.event.allDay
+                        ? Text(
+                            '全天',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: accent,
+                              height: 1.2,
+                            ),
+                          )
+                        : _ScheduleTimeColumn(
+                            start: timeStart,
+                            end: timeEnd,
+                            accent: accent,
                           ),
-                        )
-                      : _ScheduleTimeColumn(
-                          start: timeStart,
-                          end: timeEnd,
-                          accent: accent,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            ExcludeSemantics(
+                              child: Icon(
+                                Icons.phone_android_rounded,
+                                size: 14,
+                                color: accent,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                widget.event.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: _dimScheduleColor(
+                                    colors.onSurface,
+                                    dimmed,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.phone_android_rounded,
-                            size: 14,
-                            color: accent,
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              widget.event.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                                color: colors.onSurface,
+                        if (widget.event.location != null) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            widget.event.location!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _dimScheduleColor(
+                                colors.onSurfaceVariant,
+                                dimmed,
                               ),
                             ),
                           ),
                         ],
-                      ),
-                      if (widget.event.location != null) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          widget.event.location!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '手机日历',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colors.onSurfaceVariant,
+                  const SizedBox(width: 4),
+                  Text(
+                    '手机日历',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _dimScheduleColor(colors.onSurfaceVariant, dimmed),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -964,10 +986,12 @@ class _FixedScheduleCompactCard extends StatelessWidget {
     required this.isLight,
     required this.cardKey,
     required this.onTap,
+    this.isDimmed = false,
   });
 
   final FixedScheduleItem item;
   final bool isLight;
+  final bool isDimmed;
   final GlobalKey cardKey;
   final void Function(GlobalKey cardKey) onTap;
 
@@ -984,16 +1008,18 @@ class _FixedScheduleCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final dimmed = isDimmed;
+    final accent = _dimScheduleColor(colors.primary, dimmed);
     final startLabel = item.startTime == null
         ? '时间待定'
-        : _courseSectionDateFormat('HH:mm').format(
+        : AppTimeFormats.dateFormatter('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal(),
           );
     final endLabel = item.startTime == null
         ? null
         : item.endTime == null
         ? '结束待定'
-        : _courseSectionDateFormat('HH:mm').format(
+        : AppTimeFormats.dateFormatter('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal(),
           );
     final supportingText = [
@@ -1006,11 +1032,15 @@ class _FixedScheduleCompactCard extends StatelessWidget {
       key: cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
-      tint: colors.primary.withValues(alpha: 0.16),
+      tint: colors.primary.withValues(alpha: dimmed ? 0.09 : 0.16),
       fallbackDecoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        color: colors.surface.withValues(
+          alpha: (isLight ? 0.97 : 0.75) * (dimmed ? 0.72 : 1.0),
+        ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: colors.primary.withValues(alpha: dimmed ? 0.10 : 0.18),
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -1018,87 +1048,105 @@ class _FixedScheduleCompactCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => onTap(cardKey),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 38,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    color: colors.primary,
-                    borderRadius: BorderRadius.circular(2),
+          child: MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 3,
+                      height: 38,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: _ScheduleTimeColumn(
-                    start: startLabel,
-                    end: endLabel,
-                    accent: colors.primary,
+                  SizedBox(
+                    width: 50,
+                    child: _ScheduleTimeColumn(
+                      start: startLabel,
+                      end: endLabel,
+                      accent: accent,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                                color: colors.onSurface,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: _dimScheduleColor(
+                                    colors.onSurface,
+                                    dimmed,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _dimScheduleColor(
+                                  colors.primaryContainer,
+                                  dimmed,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '固定',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: _dimScheduleColor(
+                                    colors.onPrimaryContainer,
+                                    dimmed,
+                                  ),
+                                ),
+                              ),
                             ),
-                            decoration: BoxDecoration(
-                              color: colors.primaryContainer,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '固定',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: colors.onPrimaryContainer,
+                          ],
+                        ),
+                        if (supportingText.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            supportingText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _dimScheduleColor(
+                                colors.onSurfaceVariant,
+                                dimmed,
                               ),
                             ),
                           ),
                         ],
-                      ),
-                      if (supportingText.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          supportingText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: colors.onSurfaceVariant,
-                ),
-              ],
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: _dimScheduleColor(colors.onSurfaceVariant, dimmed),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1110,11 +1158,13 @@ class _FixedScheduleCompactCard extends StatelessWidget {
 class _CourseCompactCard extends StatefulWidget {
   final CourseItem course;
   final bool isLight;
+  final bool isDimmed;
   final Function(GlobalKey cardKey) onTap;
 
   const _CourseCompactCard({
     required this.course,
     required this.isLight,
+    this.isDimmed = false,
     required this.onTap,
   });
 
@@ -1128,25 +1178,26 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final dimmed = widget.isDimmed;
     final String typeLabel = _lessonTypeLabel(widget.course.lessonType);
 
     return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
-      tint: colorScheme.primary.withValues(alpha: 0.16),
+      tint: colorScheme.primary.withValues(alpha: dimmed ? 0.09 : 0.16),
       fallbackDecoration: BoxDecoration(
         color: colorScheme.surface.withValues(
-          alpha: widget.isLight ? 0.97 : 0.75,
+          alpha: (widget.isLight ? 0.97 : 0.75) * (dimmed ? 0.72 : 1.0),
         ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: colorScheme.outline.withValues(
-            alpha: widget.isLight ? 0.06 : 0.12,
+            alpha: (widget.isLight ? 0.06 : 0.12) * (dimmed ? 0.65 : 1.0),
           ),
           width: 1,
         ),
-        boxShadow: widget.isLight
+        boxShadow: widget.isLight && !dimmed
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.03),
@@ -1168,128 +1219,130 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
             'courses',
             widget.course.courseName,
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                // 左侧竖条
-                Container(
-                  width: 3,
-                  height: 36,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                // 时间列
-                SizedBox(
-                  width: 50,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _periodToTime(widget.course.startTime),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.primary,
-                          height: 1.2,
+          child: MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(
+                children: [
+                  // 左侧竖条
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 3,
+                      height: 36,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(
+                          alpha: dimmed ? 0.4 : 0.7,
                         ),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      Text(
-                        _periodToTime(widget.course.endTime),
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: colorScheme.primary.withValues(alpha: 0.55),
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // 课程名 + 地点教师
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              widget.course.courseName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurface,
-                                height: 1.2,
+                  // 时间列
+                  SizedBox(
+                    width: 50,
+                    child: _ScheduleTimeColumn(
+                      start: _periodToTime(widget.course.startTime),
+                      end: _periodToTime(widget.course.endTime),
+                      accent: _dimScheduleColor(colorScheme.primary, dimmed),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // 课程名 + 地点教师
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.course.courseName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: _dimScheduleColor(
+                                    colorScheme.onSurface,
+                                    dimmed,
+                                  ),
+                                  height: 1.2,
+                                ),
                               ),
                             ),
-                          ),
-                          if (typeLabel.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
+                            if (typeLabel.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.secondaryContainer
+                                      .withValues(alpha: dimmed ? 0.46 : 0.8),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  typeLabel,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _dimScheduleColor(
+                                      colorScheme.onSecondaryContainer,
+                                      dimmed,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              decoration: BoxDecoration(
-                                color: colorScheme.secondaryContainer
-                                    .withValues(alpha: 0.8),
-                                borderRadius: BorderRadius.circular(6),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            ExcludeSemantics(
+                              child: Icon(
+                                Icons.location_on_rounded,
+                                size: 11,
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: dimmed ? 0.24 : 0.4,
+                                ),
                               ),
+                            ),
+                            const SizedBox(width: 3),
+                            Expanded(
                               child: Text(
-                                typeLabel,
+                                '${widget.course.roomName}  ·  ${widget.course.teacherName}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: colorScheme.onSecondaryContainer,
+                                  fontSize: 11,
+                                  color: colorScheme.onSurface.withValues(
+                                    alpha: dimmed ? 0.28 : 0.45,
+                                  ),
+                                  height: 1.2,
                                 ),
                               ),
                             ),
                           ],
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on_rounded,
-                            size: 11,
-                            color: colorScheme.onSurface.withValues(alpha: 0.4),
-                          ),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              '${widget.course.roomName}  ·  ${widget.course.teacherName}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.45,
-                                ),
-                                height: 1.2,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: colorScheme.onSurface.withValues(alpha: 0.25),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: colorScheme.onSurface.withValues(
+                        alpha: dimmed ? 0.16 : 0.25,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1303,36 +1356,44 @@ class _PlanCompactCard extends StatelessWidget {
     required this.block,
     required this.isLight,
     required this.onTap,
+    this.isDimmed = false,
   });
 
   final TodoPlanBlock block;
   final bool isLight;
+  final bool isDimmed;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final dimmed = isDimmed;
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final start = timeFormat.format(
       DateTime.fromMillisecondsSinceEpoch(block.startTime),
     );
     final end = timeFormat.format(
       DateTime.fromMillisecondsSinceEpoch(block.endTime),
     );
-    final statusColor = _statusColor(block.status);
+    final baseStatusColor = _statusColor(block.status);
+    final statusColor = _dimScheduleColor(baseStatusColor, dimmed);
 
     return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
-      tint: statusColor.withValues(alpha: 0.16),
+      tint: baseStatusColor.withValues(alpha: dimmed ? 0.09 : 0.16),
       fallbackDecoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        color: colorScheme.surface.withValues(
+          alpha: (isLight ? 0.97 : 0.75) * (dimmed ? 0.72 : 1.0),
+        ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: statusColor.withValues(alpha: isLight ? 0.16 : 0.24),
+          color: baseStatusColor.withValues(
+            alpha: (isLight ? 0.16 : 0.24) * (dimmed ? 0.65 : 1.0),
+          ),
           width: 1,
         ),
-        boxShadow: isLight
+        boxShadow: isLight && !dimmed
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.03),
@@ -1348,109 +1409,108 @@ class _PlanCompactCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 36,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        start,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: statusColor,
-                          height: 1.2,
-                        ),
+          child: MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 3,
+                      height: 36,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      Text(
-                        end,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: statusColor.withValues(alpha: 0.58),
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            _statusIcon(block.status),
-                            size: 14,
-                            color: statusColor,
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              block.titleSnapshot ?? '未命名规划',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurface,
-                                height: 1.2,
+                  SizedBox(
+                    width: 50,
+                    child: _ScheduleTimeColumn(
+                      start: start,
+                      end: end,
+                      accent: statusColor,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            ExcludeSemantics(
+                              child: Icon(
+                                _statusIcon(block.status),
+                                size: 14,
+                                color: statusColor,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.event_note_rounded,
-                            size: 11,
-                            color: colorScheme.onSurface.withValues(alpha: 0.4),
-                          ),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              '${block.plannedMinutes} 分钟规划${block.remark?.isNotEmpty == true ? ' · ${block.remark}' : ''}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.45,
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                block.titleSnapshot ?? '未命名规划',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: _dimScheduleColor(
+                                    colorScheme.onSurface,
+                                    dimmed,
+                                  ),
+                                  height: 1.2,
                                 ),
-                                height: 1.2,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            ExcludeSemantics(
+                              child: Icon(
+                                Icons.event_note_rounded,
+                                size: 11,
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: dimmed ? 0.24 : 0.4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                '${block.plannedMinutes} 分钟规划${block.remark?.isNotEmpty == true ? ' · ${block.remark}' : ''}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurface.withValues(
+                                    alpha: dimmed ? 0.28 : 0.45,
+                                  ),
+                                  height: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: colorScheme.onSurface.withValues(alpha: 0.25),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: colorScheme.onSurface.withValues(
+                        alpha: dimmed ? 0.16 : 0.25,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1498,10 +1558,12 @@ class _TodoCompactCard extends StatefulWidget {
     required this.todo,
     required this.isLight,
     required this.onTap,
+    this.isDimmed = false,
   });
 
   final TodoItem todo;
   final bool isLight;
+  final bool isDimmed;
   final Function(GlobalKey cardKey) onTap;
 
   @override
@@ -1514,31 +1576,35 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final dimmed = widget.isDimmed;
     final start = DateTime.fromMillisecondsSinceEpoch(
       widget.todo.createdDate ?? widget.todo.createdAt,
     ).toLocal();
     final end = widget.todo.dueDate!.toLocal();
     final now = DateTime.now();
-    final statusColor = widget.todo.isDone
+    final baseStatusColor = widget.todo.isDone
         ? Colors.green
         : (end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700);
+    final statusColor = _dimScheduleColor(baseStatusColor, dimmed);
     final minutes = end.difference(start).inMinutes;
 
     return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
-      tint: statusColor.withValues(alpha: 0.16),
+      tint: baseStatusColor.withValues(alpha: dimmed ? 0.09 : 0.16),
       fallbackDecoration: BoxDecoration(
         color: colorScheme.surface.withValues(
-          alpha: widget.isLight ? 0.97 : 0.75,
+          alpha: (widget.isLight ? 0.97 : 0.75) * (dimmed ? 0.72 : 1.0),
         ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: statusColor.withValues(alpha: widget.isLight ? 0.16 : 0.24),
+          color: baseStatusColor.withValues(
+            alpha: (widget.isLight ? 0.16 : 0.24) * (dimmed ? 0.65 : 1.0),
+          ),
           width: 1,
         ),
-        boxShadow: widget.isLight
+        boxShadow: widget.isLight && !dimmed
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.03),
@@ -1560,114 +1626,114 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
             'todos',
             widget.todo.title,
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 36,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _courseSectionDateFormat('HH:mm').format(start),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: statusColor,
-                          height: 1.2,
-                        ),
+          child: MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 3,
+                      height: 36,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      Text(
-                        _courseSectionDateFormat('HH:mm').format(end),
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: statusColor.withValues(alpha: 0.58),
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            widget.todo.isDone
-                                ? Icons.check_circle_rounded
-                                : Icons.task_alt_rounded,
-                            size: 14,
-                            color: statusColor,
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              widget.todo.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurface,
-                                decoration: widget.todo.isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                height: 1.2,
+                  SizedBox(
+                    width: 50,
+                    child: _ScheduleTimeColumn(
+                      start: AppTimeFormats.dateFormatter('HH:mm')
+                          .format(start),
+                      end: AppTimeFormats.dateFormatter('HH:mm').format(end),
+                      accent: statusColor,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            ExcludeSemantics(
+                              child: Icon(
+                                widget.todo.isDone
+                                    ? Icons.check_circle_rounded
+                                    : Icons.task_alt_rounded,
+                                size: 14,
+                                color: statusColor,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.schedule_rounded,
-                            size: 11,
-                            color: colorScheme.onSurface.withValues(alpha: 0.4),
-                          ),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${widget.todo.remark?.isNotEmpty == true ? ' · ${widget.todo.remark}' : ''}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.45,
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                widget.todo.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: _dimScheduleColor(
+                                    colorScheme.onSurface,
+                                    dimmed,
+                                  ),
+                                  decoration: widget.todo.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  height: 1.2,
                                 ),
-                                height: 1.2,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            ExcludeSemantics(
+                              child: Icon(
+                                Icons.schedule_rounded,
+                                size: 11,
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: dimmed ? 0.24 : 0.4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${widget.todo.remark?.isNotEmpty == true ? ' · ${widget.todo.remark}' : ''}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurface.withValues(
+                                    alpha: dimmed ? 0.28 : 0.45,
+                                  ),
+                                  height: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: colorScheme.onSurface.withValues(alpha: 0.25),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: colorScheme.onSurface.withValues(
+                        alpha: dimmed ? 0.16 : 0.25,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -272,6 +272,7 @@ class _HabitCelebrationSettingsDialogState
               HabitCelebrationTrigger(
                 enableHoldToCheckin: _holdToCheckin,
                 burstColor: const Color(0xFFFFB300),
+                borderRadius: BorderRadius.circular(14),
                 holdHint: '请长按蓄力盖章打卡',
                 semanticLabel: '打卡手感与动效试玩',
                 onCheckIn: () async {

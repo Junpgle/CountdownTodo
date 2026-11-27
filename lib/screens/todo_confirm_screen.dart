@@ -4,9 +4,10 @@ import 'package:uuid/uuid.dart';
 
 import '../widgets/floating_glass_control.dart';
 import '../widgets/ai_water_border.dart';
+import '../widgets/app_state_views.dart';
+import '../widgets/todo_capture_edit_fields.dart';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/chat_message.dart';
@@ -22,6 +23,7 @@ import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/semester_week_context.dart';
+import '../utils/time_utils.dart';
 
 enum _TodoConfirmationAction { addTodo, addFixedSchedule, cancel }
 
@@ -145,7 +147,6 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   List<TodoGroup> _todoGroups = [];
   Map<String, int> _categoryReminderDefaults = {};
   SemesterWeekContext? _semesterWeekContext;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   @override
   void initState() {
@@ -164,14 +165,6 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   String _dateWithSemesterWeek(DateTime date, String formattedDate) =>
       _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
       formattedDate;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   Future<void> _loadTodoMetadata() async {
     final username = await StorageService.getLoginSession();
@@ -229,14 +222,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         isAllDay: isAllDay,
         startTime: startTime,
         endTime: endTime,
-        timeSemantics: _parseTimeSemantics(
+        timeSemantics: RecognizedTodoAdapter.parseTimeSemantics(
           rawTimeMode,
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
         ),
-        recurrence: _parseRecurrenceType(result['recurrence']),
-        customIntervalDays: _parseNullableInt(
+        recurrence: parseRecurrenceType(result['recurrence']),
+        customIntervalDays: RecognizedTodoAdapter.parseNullableInt(
           result['customIntervalDays'] ?? result['custom_interval_days'],
         ),
         originalText:
@@ -244,12 +237,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     result['original_text'] ??
                     widget.originalText)
                 ?.toString(),
-        reminderMinutes: _parseNullableInt(
+        reminderMinutes: RecognizedTodoAdapter.parseNullableInt(
           result['reminderMinutes'] ?? result['reminder_minutes'],
         ),
         groupId: (result['groupId'] ?? result['group_id'])?.toString(),
         collabType:
-            _parseNullableInt(result['collab_type'] ?? result['collabType']) ??
+            RecognizedTodoAdapter.parseNullableInt(
+              result['collab_type'] ?? result['collabType'],
+            ) ??
             0,
         itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
         teamUuid:
@@ -267,55 +262,6 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         ),
       );
     }).toList();
-  }
-
-  int? _parseNullableInt(dynamic value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
-
-  RecurrenceType _parseRecurrenceType(dynamic type) {
-    final index = _parseNullableInt(type);
-    if (index != null && index >= 0 && index < RecurrenceType.values.length) {
-      return RecurrenceType.values[index];
-    }
-    switch (type?.toString()) {
-      case 'daily':
-        return RecurrenceType.daily;
-      case 'weekly':
-        return RecurrenceType.weekly;
-      case 'monthly':
-        return RecurrenceType.monthly;
-      case 'yearly':
-        return RecurrenceType.yearly;
-      case 'weekdays':
-        return RecurrenceType.weekdays;
-      case 'customDays':
-        return RecurrenceType.customDays;
-      default:
-        return RecurrenceType.none;
-    }
-  }
-
-  ParsedTimeSemantics _parseTimeSemantics(
-    dynamic raw, {
-    required bool isAllDay,
-    required DateTime? startTime,
-    required DateTime? endTime,
-  }) {
-    if (isAllDay) return ParsedTimeSemantics.dateOnly;
-    if (raw?.toString().trim().toLowerCase() == 'range') {
-      return ParsedTimeSemantics.range;
-    }
-    final mode = RecognizedTodoAdapter.parseTimeMode(raw);
-    if (mode == TodoTimeMode.dateOnly) return ParsedTimeSemantics.dateOnly;
-    if (mode == TodoTimeMode.deadline) return ParsedTimeSemantics.deadline;
-    if (mode == TodoTimeMode.unscheduled) {
-      return ParsedTimeSemantics.unscheduled;
-    }
-    return startTime != null && endTime != null
-        ? ParsedTimeSemantics.range
-        : ParsedTimeSemantics.unscheduled;
   }
 
   Future<void> _retryRecognition() async {
@@ -513,148 +459,23 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('某天内完成'),
-                    value: isAllDay,
-                    onChanged: (val) {
+                  TodoAllDayScheduleFields(
+                    isAllDay: isAllDay,
+                    createdAt: createdAt,
+                    dueDate: dueDate,
+                    semesterWeekContext: _semesterWeekContext,
+                    formatDateLabel: _dateWithSemesterWeek,
+                    formatDateTimeLabel: _dateWithSemesterWeek,
+                    defaultDeadlineTimeBuilder: () =>
+                        createdAt.add(const Duration(hours: 1)),
+                    onChanged: (nextAllDay, nextCreatedAt, nextDueDate) {
                       setDialogState(() {
-                        final wasDateOnlyRange =
-                            dueDate != null &&
-                            TodoItem.looksLikeLegacyDateOnlyRange(
-                              createdAt,
-                              dueDate!,
-                            );
-                        isAllDay = val;
-                        if (isAllDay) {
-                          createdAt = DateTime(
-                            createdAt.year,
-                            createdAt.month,
-                            createdAt.day,
-                          );
-                          dueDate = DateTime(
-                            dueDate?.year ?? createdAt.year,
-                            dueDate?.month ?? createdAt.month,
-                            dueDate?.day ?? createdAt.day,
-                            23,
-                            59,
-                          );
-                        } else if (wasDateOnlyRange) {
-                          final now = DateTime.now();
-                          createdAt = DateTime(
-                            createdAt.year,
-                            createdAt.month,
-                            createdAt.day,
-                            now.hour,
-                            now.minute,
-                          );
-                          dueDate = null;
-                        }
+                        isAllDay = nextAllDay;
+                        createdAt = nextCreatedAt;
+                        dueDate = nextDueDate;
                       });
                     },
                   ),
-                  if (isAllDay)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        '完成日期: ${_dateWithSemesterWeek(createdAt, _cachedDateFormat('yyyy-MM-dd').format(createdAt))}',
-                      ),
-                      onTap: () async {
-                        final pickedDate = await showAppDatePicker(
-                          context: context,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: createdAt,
-                          semesterWeekContext: _semesterWeekContext,
-                        );
-                        if (pickedDate != null) {
-                          if (isAllDay) {
-                            setDialogState(() {
-                              createdAt = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                              );
-                              dueDate = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                                23,
-                                59,
-                              );
-                            });
-                          } else {
-                            if (!context.mounted) return;
-                            final pickedTime = await showAppTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(createdAt),
-                            );
-                            if (pickedTime != null) {
-                              setDialogState(
-                                () => createdAt = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  pickedTime.hour,
-                                  pickedTime.minute,
-                                ),
-                              );
-                            }
-                          }
-                        }
-                      },
-                    ),
-                  if (!isAllDay)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        dueDate == null
-                            ? '设置截止时间（当前未安排）'
-                            : '${_dateWithSemesterWeek(dueDate!, _cachedDateFormat('yyyy-MM-dd HH:mm').format(dueDate!))} 前完成',
-                      ),
-                      onTap: () async {
-                        final pickedDate = await showAppDatePicker(
-                          context: context,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: dueDate ?? createdAt,
-                          semesterWeekContext: _semesterWeekContext,
-                        );
-                        if (pickedDate != null) {
-                          if (isAllDay) {
-                            setDialogState(
-                              () => dueDate = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                                23,
-                                59,
-                              ),
-                            );
-                          } else {
-                            if (!context.mounted) return;
-                            final pickedTime = await showAppTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(
-                                dueDate ??
-                                    createdAt.add(const Duration(hours: 1)),
-                              ),
-                            );
-                            if (pickedTime != null) {
-                              setDialogState(
-                                () => dueDate = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  pickedTime.hour,
-                                  pickedTime.minute,
-                                ),
-                              );
-                            }
-                          }
-                        }
-                      },
-                    ),
                   const Divider(),
                   DropdownButtonFormField<String?>(
                     initialValue: selectedGroupId,
@@ -688,33 +509,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: reminderMinutes,
-                    decoration: InputDecoration(
-                      labelText: '温馨提醒 (提前量)',
-                      prefixIcon: const Icon(
-                        Icons.notifications_active_outlined,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 0, child: Text('准时提醒')),
-                      DropdownMenuItem(value: 5, child: Text('提前 5 分钟')),
-                      DropdownMenuItem(value: 10, child: Text('提前 10 分钟')),
-                      DropdownMenuItem(value: 15, child: Text('提前 15 分钟')),
-                      DropdownMenuItem(value: 30, child: Text('提前 30 分钟')),
-                      DropdownMenuItem(value: 45, child: Text('提前 45 分钟')),
-                      DropdownMenuItem(value: 60, child: Text('提前 1 小时')),
-                      DropdownMenuItem(value: 120, child: Text('提前 2 小时')),
-                      DropdownMenuItem(value: 1440, child: Text('提前 1 天')),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) {
-                        setDialogState(() => reminderMinutes = val);
-                      }
-                    },
+                  TodoReminderLeadTimeDropdown(
+                    value: reminderMinutes,
+                    onChanged: (val) =>
+                        setDialogState(() => reminderMinutes = val),
                   ),
                   if (todo.teamUuid != null) ...[
                     const SizedBox(height: 12),
@@ -737,86 +535,20 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     ),
                   ],
                   const Divider(),
-                  DropdownButtonFormField<RecurrenceType>(
-                    initialValue: recurrence,
-                    decoration: InputDecoration(
-                      labelText: '重复 (可选)',
-                      prefixIcon: const Icon(Icons.replay_rounded),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: RecurrenceType.none,
-                        child: Text('不重复'),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.daily,
-                        child: Text('每天重复'),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.weekly,
-                        child: Text('每周重复'),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.monthly,
-                        child: Text('每月重复'),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.yearly,
-                        child: Text('每年重复'),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.weekdays,
-                        child: Text('工作日'),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.customDays,
-                        child: Text('间隔几天'),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setDialogState(() => recurrence = val);
-                    },
+                  TodoRecurrencePickerFields(
+                    recurrence: recurrence,
+                    customDaysController: customDaysCtrl,
+                    recurrenceEndDate: recurrenceEndDate,
+                    showPrefixIcon: true,
+                    semesterWeekContext: _semesterWeekContext,
+                    endDatePrefix: '循环截止: ',
+                    formatEndDateLabel: _dateWithSemesterWeek,
+                    onRecurrenceChanged: (val) =>
+                        setDialogState(() => recurrence = val),
+                    onCustomDaysChanged: (val) => customDays = val,
+                    onRecurrenceEndDateChanged: (val) =>
+                        setDialogState(() => recurrenceEndDate = val),
                   ),
-                  if (recurrence == RecurrenceType.customDays) ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: customDaysCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: '间隔天数',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onChanged: (val) => customDays = int.tryParse(val),
-                    ),
-                  ],
-                  if (recurrence != RecurrenceType.none) ...[
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        recurrenceEndDate == null
-                            ? '重复结束日期 (可选)'
-                            : '循环截止: ${_dateWithSemesterWeek(recurrenceEndDate!, _cachedDateFormat('yyyy-MM-dd').format(recurrenceEndDate!))}',
-                      ),
-                      trailing: const Icon(Icons.event_busy, size: 20),
-                      onTap: () async {
-                        final picked = await showAppDatePicker(
-                          context: context,
-                          initialDate: recurrenceEndDate ?? DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime(2100),
-                          semesterWeekContext: _semesterWeekContext,
-                        );
-                        if (picked != null) {
-                          setDialogState(() => recurrenceEndDate = picked);
-                        }
-                      },
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -996,7 +728,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     }
     final item = FixedScheduleItem(
       title: todo.title,
-      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
+      date: AppTimeFormats.dateFormatter('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: FixedScheduleSource.ai,
@@ -1340,20 +1072,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.inbox, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text('没有可确认事项', style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _isRetrying ? null : _retryRecognition,
-            icon: const Icon(Icons.refresh),
-            label: const Text('重新识别'),
-          ),
-        ],
+    return AppEmptyState(
+      icon: Icons.inbox,
+      iconSize: 64,
+      title: '没有可确认事项',
+      action: OutlinedButton.icon(
+        onPressed: _isRetrying ? null : _retryRecognition,
+        icon: const Icon(Icons.refresh),
+        label: const Text('重新识别'),
       ),
     );
   }
@@ -1497,36 +1223,37 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       if (todo.isAllDay) {
         timeText = todo.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${_cachedDateFormat('yyyy-MM-dd').format(todo.startTime!)} · 时间待定';
+            : '${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(todo.startTime!)} · 时间待定';
       } else if (todo.startTime != null && todo.endTime != null) {
         timeText =
-            '${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}–${_cachedDateFormat('HH:mm').format(todo.endTime!)}';
+            '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.startTime!)}–${AppTimeFormats.dateFormatter('HH:mm').format(todo.endTime!)}';
       } else if (todo.startTime != null) {
         timeText =
-            '${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}开始 · 结束待定';
+            '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.startTime!)}开始 · 结束待定';
       } else {
         timeText = '日期和时间待确认';
       }
     } else if (intent == CaptureIntentKind.planBlock) {
       timeIcon = Icons.view_timeline_outlined;
       timeText = todo.startTime != null && todo.endTime != null
-          ? '${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}–${_cachedDateFormat('HH:mm').format(todo.endTime!)}'
+          ? '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.startTime!)}–${AppTimeFormats.dateFormatter('HH:mm').format(todo.endTime!)}'
           : '规划时段待确认';
     } else if (todo.isAllDay) {
       timeIcon = Icons.today;
       if (todo.startTime != null) {
         timeText =
-            '${_cachedDateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';
+            '${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(todo.startTime!)}内完成';
       } else {
         timeText = '某天内完成';
       }
     } else if (todo.endTime != null) {
       timeIcon = Icons.schedule;
-      timeText = '${_cachedDateFormat('MM-dd HH:mm').format(todo.endTime!)}前完成';
+      timeText =
+          '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.endTime!)}前完成';
     } else if (todo.startTime != null) {
       timeIcon = Icons.play_circle_outline;
       timeText =
-          '时间待确认: ${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}';
+          '时间待确认: ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.startTime!)}';
     } else {
       timeIcon = Icons.access_time;
       timeText = '未安排';

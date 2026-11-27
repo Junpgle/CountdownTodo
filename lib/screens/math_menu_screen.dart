@@ -340,7 +340,10 @@ class _AnimatedMenuCard extends StatelessWidget {
         if (value >= 0.999) return child!;
         return Transform.translate(
           offset: Offset(0, 30 * (1 - value)),
-          child: Opacity(opacity: value, child: child),
+          child: FadeTransition(
+            opacity: animation,
+            child: RepaintBoundary(child: child),
+          ),
         );
       },
     );

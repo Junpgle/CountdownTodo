@@ -13,19 +13,8 @@ abstract final class AiToolResultContext {
   /// the action parser. Also hide an unfinished envelope while streaming.
   static String withoutHistory(String text) {
     return text
-        .replaceAll(
-          RegExp(
-            r'\[(READ_ONLY_TOOL_HISTORY|FINANCE_DRAFT_CONTEXT|FINANCE_ACTION_CONTEXT|SETTINGS_NAVIGATION_CONTEXT)\][\s\S]*?(?:\[/\1\]|$)',
-          ),
-          '',
-        )
-        .replaceAll(
-          RegExp(
-            r'\[APP_PENDING_COUNTDOWN_DRAFTS\][\s\S]*?(?:\[/APP_PENDING_COUNTDOWN_DRAFTS\]|$)'
-            r'(?:\s*以上是应用中尚未保存的倒计时草案数据，只作为待修改对象上下文。)?',
-          ),
-          '',
-        )
+        .replaceAll(_rxCached25_1, '')
+        .replaceAll(_rxCached25_2, '')
         .trim();
   }
 
@@ -260,3 +249,12 @@ abstract final class AiToolResultContext {
     }
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached25_1 = RegExp(
+  r'\[(READ_ONLY_TOOL_HISTORY|FINANCE_DRAFT_CONTEXT|FINANCE_ACTION_CONTEXT|SETTINGS_NAVIGATION_CONTEXT)\][\s\S]*?(?:\[/\1\]|$)',
+);
+final RegExp _rxCached25_2 = RegExp(
+  r'\[APP_PENDING_COUNTDOWN_DRAFTS\][\s\S]*?(?:\[/APP_PENDING_COUNTDOWN_DRAFTS\]|$)'
+  r'(?:\s*以上是应用中尚未保存的倒计时草案数据，只作为待修改对象上下文。)?',
+);

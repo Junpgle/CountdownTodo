@@ -1074,7 +1074,7 @@ class TimelineService {
       final now = DateTime.now();
       final monthStart = DateTime(now.year, now.month, 1);
       final monthEnd = DateTime(now.year, now.month + 1, 1);
-      final tomorrow = DateTime(now.year, now.month, now.day + 1);
+      final tomorrow = AppTimeFormats.localDayStartOffset(now, 1);
       final monthEndSafe = tomorrow.isBefore(monthEnd) ? tomorrow : monthEnd;
       final monthStartMs = monthStart.millisecondsSinceEpoch;
       final monthEndMs = monthEndSafe.millisecondsSinceEpoch;

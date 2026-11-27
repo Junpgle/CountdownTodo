@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../services/sync_health_service.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../utils/settings_navigation.dart';
+import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../conflict_inbox_screen.dart';
 import 'course_settings_page.dart';
+import '../../../utils/text_utils.dart';
 
 class SyncHealthPage extends StatefulWidget {
   const SyncHealthPage({
@@ -91,8 +94,7 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
         : snapshot.totalConflictCount > 0
         ? '同步请求已完成，仍有 ${snapshot.totalConflictCount} 项冲突待核对'
         : '同步请求已完成';
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   Future<void> _openConflicts() async {
@@ -143,9 +145,11 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
   Widget _buildBody(BuildContext context) {
     final topInset = floatingGlassSettingsContentTopInset(context);
     if (_isLoading && _snapshot == null) {
-      return Padding(
-        padding: EdgeInsets.only(top: topInset),
-        child: const Center(child: CircularProgressIndicator()),
+      return AppSkeletonDashboardPage(
+        topPadding: topInset,
+        showMetricGrid: true,
+        showChart: false,
+        listCount: 3,
       );
     }
     if (_loadError != null && _snapshot == null) {
@@ -601,22 +605,21 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
     _ => '待同步操作',
   };
 
-  String _formatDate(DateTime date) => DateFormat('M月d日 HH:mm').format(date);
+  String _formatDate(DateTime date) =>
+      AppTimeFormats.format(date, 'M月d日 HH:mm');
 
   String _safeErrorSummary(String input) {
     var safe = input.trim();
-    safe = safe.replaceAll(
-      RegExp(r'Bearer\s+[^\s,;]+', caseSensitive: false),
-      'Bearer [已隐藏]',
-    );
-    safe = safe.replaceAll(
-      RegExp(
-        r'(token|authorization|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+',
-        caseSensitive: false,
-      ),
-      '[敏感信息已隐藏]',
-    );
-    if (safe.length > 180) safe = '${safe.substring(0, 180)}…';
+    safe = safe.replaceAll(_rxCached18_1, 'Bearer [已隐藏]');
+    safe = safe.replaceAll(_rxCached18_2, '[敏感信息已隐藏]');
+    safe = AppTextUtils.truncate(safe, 180);
     return safe.isEmpty ? '原因未知' : safe;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached18_1 = RegExp(r'Bearer\s+[^\s,;]+', caseSensitive: false);
+final RegExp _rxCached18_2 = RegExp(
+  r'(token|authorization|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+',
+  caseSensitive: false,
+);

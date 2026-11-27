@@ -16,6 +16,7 @@ import '../../../widgets/ai_tool_budget_dialog.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../llm_config_page.dart';
 import '../../../utils/app_dialogs.dart';
@@ -39,13 +40,17 @@ class AiAssistantSettingsPage extends StatefulWidget {
       _AiAssistantSettingsPageState();
 }
 
-class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
+class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage>
+    with SettingsTargetHighlightMixin<AiAssistantSettingsPage> {
   final GlobalKey _modelConfigKey = GlobalKey();
   final GlobalKey _dailyAiSuggestionKey = GlobalKey();
   final TextEditingController _promptController = TextEditingController();
 
-  String? _highlightTarget;
-  Timer? _highlightTimer;
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => switch (target) {
+    AiAssistantSettingsPage.dailyAiSuggestionTarget => _dailyAiSuggestionKey,
+    _ => null,
+  };
 
   bool _isLoading = true;
   bool _isSavingPrompt = false;
@@ -78,7 +83,6 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   @override
   void dispose() {
     AiMemoryService.revision.removeListener(_onMemoryRevisionChanged);
-    _highlightTimer?.cancel();
     _promptController.dispose();
     super.dispose();
   }
@@ -95,26 +99,6 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
     setState(() {
       _aiMemoryEnabled = enabled;
       _aiMemories = memories;
-    });
-  }
-
-  void _scrollToTarget(String target) {
-    final key = switch (target) {
-      AiAssistantSettingsPage.dailyAiSuggestionTarget => _dailyAiSuggestionKey,
-      _ => null,
-    };
-    if (key?.currentContext == null) return;
-    setState(() => _highlightTarget = target);
-    Scrollable.ensureVisible(
-      key!.currentContext!,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      alignment: 0.15,
-    );
-    _highlightTimer?.cancel();
-    _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-      _highlightTimer = null;
-      if (mounted) setState(() => _highlightTarget = null);
     });
   }
 
@@ -155,17 +139,12 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _locationPermissionStatus = values[13] as PermissionStatus;
       _isLoading = false;
     });
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scrollToTarget(widget.initialTarget!);
-      });
-    }
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   Future<void> _requestLocationPermission() async {
-    final result = await PermissionRequestCoordinator(
-      context: context,
-    ).request(AppPermissionKind.location, fallbackToSettingsOnDenied: true);
+    final result = await PermissionRequestCoordinator(context: context)
+        .request(AppPermissionKind.location, fallbackToSettingsOnDenied: true);
     if (!mounted) return;
     setState(() {
       _locationPermissionStatus = result.status;
@@ -387,7 +366,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
 
   Future<void> _showMemoryEditorDialog({AiMemoryItem? existing}) async {
     final controller = TextEditingController(text: existing?.content ?? '');
-    final result = await showDialog<String>(
+    final result = await showAppDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(existing == null ? '添加 AI 记忆' : '编辑 AI 记忆'),
@@ -438,24 +417,13 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   }
 
   Future<void> _confirmClearMemories() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('清空 AI 记忆'),
-        content: const Text('确定清空已保存的所有个人偏好记忆吗？清空后无法恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '清空 AI 记忆',
+      message: '确定清空已保存的所有个人偏好记忆吗？清空后无法恢复。',
+      confirmLabel: '清空',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await AiMemoryService.clearMemories(_currentUsername);
     await _reloadMemories();
     if (mounted) _showSnackBar('已清空 AI 记忆');
@@ -742,7 +710,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                   curve: Curves.easeInOut,
                   decoration: BoxDecoration(
                     color:
-                        _highlightTarget ==
+                        highlightTarget ==
                             AiAssistantSettingsPage.dailyAiSuggestionTarget
                         ? colorScheme.primary.withValues(alpha: 0.12)
                         : Colors.transparent,
@@ -911,7 +879,13 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
           context,
           standalone: standalone,
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? AppSkeletonSettingsPage(
+                  topPadding: standalone
+                      ? floatingGlassSettingsContentTopInset(context)
+                      : 16,
+                  sectionCount: 3,
+                  rowsPerSection: 3,
+                )
               : _buildContent(context),
         ),
       ),

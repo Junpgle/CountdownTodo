@@ -1,12 +1,17 @@
+import 'package:flutter/widgets.dart';
+
 import '../../../services/storage/habit_storage.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../storage_service.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_drink_option.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../utils/habit_emoji_utils.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 export '../models/habit_drink_option.dart';
 
@@ -103,7 +108,7 @@ abstract final class HabitDrinkLogService {
     required String label,
     String username = '',
   }) async {
-    final cleanIcon = icon.trim().isEmpty ? '🥤' : icon.trim();
+    final cleanIcon = HabitEmojiUtils.normalizeIcon(icon, fallback: '🥤');
     final cleanLabel = label.trim().isEmpty ? '饮品' : label.trim();
     final existing = await _ensureSeededAndLoadAll();
     final active = existing.where((e) => !e.isDeleted).toList();
@@ -129,7 +134,7 @@ abstract final class HabitDrinkLogService {
     required String label,
     String username = '',
   }) async {
-    final cleanIcon = icon.trim().isEmpty ? '🥤' : icon.trim();
+    final cleanIcon = HabitEmojiUtils.normalizeIcon(icon, fallback: '🥤');
     final cleanLabel = label.trim().isEmpty ? '饮品' : label.trim();
     final allRows = await _ensureSeededAndLoadAll();
     final deviceId = await UserSessionStorage.getDeviceId();
@@ -250,7 +255,12 @@ abstract final class HabitDrinkLogService {
 
   /// 判断习惯是否为「戒掉饮料 / 控糖戒饮」类习惯。
   static bool isDrinkChoiceHabit(HabitGoal goal) {
-    final name = goal.name.trim();
+    return isDrinkChoiceName(goal.name);
+  }
+
+  /// 判断习惯名称是否属于「戒掉饮料 / 控糖戒饮」类习惯。
+  static bool isDrinkChoiceName(String rawName) {
+    final name = rawName.trim();
     if (name.isEmpty) return false;
     const directKeywords = <String>[
       '戒掉饮料',
@@ -309,13 +319,18 @@ abstract final class HabitDrinkLogService {
     return null;
   }
 
-  /// 提取 `icon label` 格式中开头的 emoji / 符号图标（支持自定义 emoji）。
+  /// 提取 `icon label` 格式中开头的 emoji / 符号图标（支持自定义与复合 emoji）。
   static String? _extractLeadingEmojiToken(String note) {
     final spaceIndex = note.indexOf(' ');
-    final head = spaceIndex > 0 ? note.substring(0, spaceIndex).trim() : note;
-    if (head.isEmpty || head.runes.length > 4) return null;
+    final head = spaceIndex > 0
+        ? note.substring(0, spaceIndex).trim()
+        : note.trim();
+    if (head.isEmpty || head.characters.length != 1) return null;
+    if (HabitEmojiUtils.isEmojiGrapheme(head)) {
+      return head;
+    }
     final firstRune = head.runes.first;
-    // 排除普通 ASCII 字母/数字与常见中日韩汉字，保留 Emoji 与符号区段。
+    // 排除普通 ASCII 字母/数字与常见中日韩汉字，保留其余单个符号。
     final isAsciiAlphaNum = (firstRune >= 0x20 && firstRune <= 0x7E);
     final isCjk =
         (firstRune >= 0x4E00 && firstRune <= 0x9FFF) ||
@@ -420,11 +435,7 @@ abstract final class HabitDrinkLogService {
     required bool success,
     String username = '',
   }) async {
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
     final dayKey = HabitRuleResolver.dayKey(normalizedDate);
     final existing = await HabitRepository.getCheckIns(
       habitUuid: goal.uuid,
@@ -513,11 +524,7 @@ abstract final class HabitDrinkLogService {
     required DateTime logicalDate,
     required HabitDrinkOption option,
   }) async {
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
     final dayKey = HabitRuleResolver.dayKey(normalizedDate);
     final existing = await HabitRepository.getCheckIns(
       habitUuid: goal.uuid,
@@ -589,11 +596,7 @@ abstract final class HabitDrinkLogService {
     required HabitGoal goal,
     required DateTime logicalDate,
   }) async {
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
     final dayKey = HabitRuleResolver.dayKey(normalizedDate);
     final existing = await HabitRepository.getCheckIns(
       habitUuid: goal.uuid,
@@ -637,9 +640,7 @@ abstract final class HabitDrinkLogService {
       now,
       rule.dayBoundaryMinute,
     );
-    if (todayLogical.year == logicalDate.year &&
-        todayLogical.month == logicalDate.month &&
-        todayLogical.day == logicalDate.day) {
+    if (AppTimeFormats.isSameDay(todayLogical, logicalDate)) {
       return now;
     }
     final safeMinute = rule.dayBoundaryMinute >= 720
@@ -653,4 +654,136 @@ abstract final class HabitDrinkLogService {
       safeMinute % 60,
     );
   }
+
+  /// 统计戒掉饮料习惯的累计与近 7 天饮品摄入情况（按饮品打卡记录聚合）。
+  static HabitDrinkStats summarizeDrinkLogs({
+    required HabitGoal goal,
+    required List<HabitCheckIn> allCheckIns,
+    DateTime? referenceDate,
+  }) {
+    if (!isDrinkChoiceHabit(goal)) {
+      return const HabitDrinkStats.empty();
+    }
+    final now = referenceDate ?? DateTime.now();
+    final endDate = CalendarDateMath.dateOnly(now);
+    final startDate = HabitRuleResolver.addCalendarDays(endDate, -6);
+
+    var totalDrinks = 0;
+    var last7DaysDrinks = 0;
+    final totalDays = <String>{};
+    final last7Days = <String>{};
+    final breakdownMap = <String, _MutableDrinkBreakdown>{};
+
+    for (final checkIn in allCheckIns) {
+      final icon = extractDrinkIconFromCheckIn(checkIn);
+      if (icon == null) continue;
+
+      totalDrinks += 1;
+      totalDays.add(checkIn.logicalDate);
+
+      final parsedDay = HabitRuleResolver.parseDayKey(checkIn.logicalDate);
+      final inLast7Days =
+          parsedDay != null &&
+          !parsedDay.isBefore(startDate) &&
+          !parsedDay.isAfter(endDate);
+      if (inLast7Days) {
+        last7DaysDrinks += 1;
+        last7Days.add(checkIn.logicalDate);
+      }
+
+      final label = _extractDrinkLabel(icon, checkIn.note);
+      final entry = breakdownMap.putIfAbsent(
+        icon,
+        () => _MutableDrinkBreakdown(icon: icon, label: label),
+      );
+      entry.totalCount += 1;
+      if (inLast7Days) {
+        entry.last7DaysCount += 1;
+      }
+    }
+
+    final breakdown =
+        breakdownMap.values
+            .map(
+              (item) => HabitDrinkBreakdownItem(
+                icon: item.icon,
+                label: item.label,
+                totalCount: item.totalCount,
+                last7DaysCount: item.last7DaysCount,
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byLast7 = b.last7DaysCount.compareTo(a.last7DaysCount);
+            if (byLast7 != 0) return byLast7;
+            return b.totalCount.compareTo(a.totalCount);
+          });
+
+    return HabitDrinkStats(
+      totalDrinks: totalDrinks,
+      totalDrinkDays: totalDays.length,
+      last7DaysDrinks: last7DaysDrinks,
+      last7DaysDrinkDays: last7Days.length,
+      breakdown: List<HabitDrinkBreakdownItem>.unmodifiable(breakdown),
+    );
+  }
+
+  static String _extractDrinkLabel(String icon, String? note) {
+    final trimmed = note?.trim() ?? '';
+    if (trimmed.startsWith(icon)) {
+      final rest = trimmed.substring(icon.length).trim();
+      if (rest.isNotEmpty) return rest;
+    }
+    final spec = _defaultSpecs.where((s) => s.icon == icon).firstOrNull;
+    if (spec != null) return spec.label;
+    return trimmed.isNotEmpty ? trimmed : icon;
+  }
+}
+
+class _MutableDrinkBreakdown {
+  final String icon;
+  final String label;
+  int totalCount = 0;
+  int last7DaysCount = 0;
+
+  _MutableDrinkBreakdown({required this.icon, required this.label});
+}
+
+/// 单个饮品品类的累计与近 7 天统计项。
+class HabitDrinkBreakdownItem {
+  final String icon;
+  final String label;
+  final int totalCount;
+  final int last7DaysCount;
+
+  const HabitDrinkBreakdownItem({
+    required this.icon,
+    required this.label,
+    required this.totalCount,
+    required this.last7DaysCount,
+  });
+}
+
+/// 戒掉饮料习惯的饮品摄入统计摘要。
+class HabitDrinkStats {
+  final int totalDrinks;
+  final int totalDrinkDays;
+  final int last7DaysDrinks;
+  final int last7DaysDrinkDays;
+  final List<HabitDrinkBreakdownItem> breakdown;
+
+  const HabitDrinkStats({
+    required this.totalDrinks,
+    required this.totalDrinkDays,
+    required this.last7DaysDrinks,
+    required this.last7DaysDrinkDays,
+    required this.breakdown,
+  });
+
+  const HabitDrinkStats.empty()
+    : totalDrinks = 0,
+      totalDrinkDays = 0,
+      last7DaysDrinks = 0,
+      last7DaysDrinkDays = 0,
+      breakdown = const <HabitDrinkBreakdownItem>[];
 }

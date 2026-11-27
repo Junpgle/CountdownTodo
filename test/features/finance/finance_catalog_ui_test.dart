@@ -4,8 +4,10 @@ import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_manager.dart';
+import 'package:countdown_todo/widgets/emoji_picker_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 List<FinanceCategory> _categories() => [
   FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜', isSystem: true),
@@ -719,5 +721,147 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  group('记账目录任意 Emoji 自定义', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets('可直接输入复合 ZWJ、按键、BMP 与追加覆盖 Emoji 并正确保存', (tester) async {
+      FinanceCatalogDraft? saved;
+      await _openEditor(tester, onSave: (draft) async => saved = draft);
+
+      final nameField = find.byKey(_nameKey);
+      final iconField = find.byKey(const ValueKey('finance-catalog-icon'));
+      await tester.enterText(nameField, '健身补剂');
+
+      // 1. 非预设 Emoji
+      await tester.enterText(iconField, '🦊');
+      await tester.pumpAndSettle();
+      expect(find.text('🦊'), findsWidgets);
+
+      // 2. 追加覆盖：旧图标后追加新图标应提取最新 Emoji
+      await tester.enterText(iconField, '📦🦊');
+      await tester.pumpAndSettle();
+
+      // 3. BMP Emoji
+      await tester.enterText(iconField, '⏰');
+      await tester.pumpAndSettle();
+
+      // 4. 按键 Emoji
+      await tester.enterText(iconField, '1️⃣');
+      await tester.pumpAndSettle();
+
+      // 5. 复合 ZWJ + 肤色 Emoji（超过 4 个 UTF-16 code unit 也不被截断）
+      await tester.enterText(iconField, '🏋🏽‍♀️');
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(_saveKey));
+      await tester.tap(find.byKey(_saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved?.name, '健身补剂');
+      expect(saved?.icon, '🏋🏽‍♀️');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('输入多字符非 Emoji 纯文本时提示错误并阻止保存', (tester) async {
+      var savedCount = 0;
+      await _openEditor(tester, onSave: (_) async => savedCount++);
+
+      await tester.enterText(find.byKey(_nameKey), '零食');
+      await tester.enterText(
+        find.byKey(const ValueKey('finance-catalog-icon')),
+        'food',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('请输入或粘贴 1 个 Emoji'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(_saveKey));
+      await tester.tap(find.byKey(_saveKey));
+      await tester.pumpAndSettle();
+
+      expect(savedCount, 0);
+      expect(find.byType(FinanceCatalogEditor), findsOneWidget);
+    });
+
+    testWidgets('可通过「全部 Emoji」切换分类挑选并持久化最近使用记录', (tester) async {
+      FinanceCatalogDraft? saved;
+      await _openEditor(
+        tester,
+        size: const Size(1024, 768),
+        onSave: (draft) async => saved = draft,
+      );
+
+      await tester.enterText(find.byKey(_nameKey), '家庭基金');
+      final moreButton = find.byKey(
+        const ValueKey('finance-more-emoji-button'),
+      );
+      await tester.ensureVisible(moreButton);
+      await tester.tap(moreButton);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppEmojiPickerDialog), findsOneWidget);
+      // 默认激活「消费账务」分类
+      final financeChip = tester.widget<ChoiceChip>(
+        find.widgetWithText(ChoiceChip, '消费账务'),
+      );
+      expect(financeChip.selected, isTrue);
+
+      final natureChip = find.text('自然动物');
+      await tester.ensureVisible(natureChip);
+      await tester.pumpAndSettle();
+      await tester.tap(natureChip);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('🌱'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('emoji-picker-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppEmojiPickerDialog), findsNothing);
+      await tester.tap(find.byKey(_saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved?.icon, '🌱');
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getStringList('finance_recent_custom_emojis'),
+        contains('🌱'),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('付款方式与系统分类在小屏大字体键盘弹出下同样支持全部 Emoji 且无溢出', (tester) async {
+      FinanceCatalogDraft? savedPayment;
+      await _openEditor(
+        tester,
+        size: const Size(320, 640),
+        textScale: 1.6,
+        type: null,
+        onSave: (draft) async => savedPayment = draft,
+      );
+      tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(_nameKey));
+      await tester.enterText(find.byKey(_nameKey), '家庭共用卡');
+
+      final iconField = find.byKey(const ValueKey('finance-catalog-icon'));
+      await tester.ensureVisible(iconField);
+      await tester.enterText(iconField, '👨‍👩‍👧‍👦');
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(_saveKey));
+      await tester.tap(find.byKey(_saveKey));
+      await tester.pumpAndSettle();
+
+      expect(savedPayment?.icon, '👨‍👩‍👧‍👦');
+      expect(savedPayment?.type, isNull);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

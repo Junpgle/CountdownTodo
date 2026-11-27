@@ -2,6 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_platform.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
+
+@visibleForTesting
+bool liquidGlassUsesLightweightButtonSurfaceFor({
+  required bool inOverlayScope,
+  required bool hasBackdropScope,
+  required bool isAndroid,
+}) {
+  return inOverlayScope || (hasBackdropScope && isAndroid);
+}
 
 double _clampOpacity(double value) => value.clamp(0.0, 1.0).toDouble();
 
@@ -59,6 +70,39 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
                 ? colorScheme.surfaceBright
                 : colorScheme.surfaceContainerHighest)
             .withValues(alpha: isDark ? 0.1 : 0.16);
+    final backdropScope = OptionalLiquidGlassBackdropScope.maybeOf(context);
+    final inOverlayScope = OptionalLiquidGlassOverlayScope.isActive(context);
+    if (liquidGlassUsesLightweightButtonSurfaceFor(
+      inOverlayScope: inOverlayScope,
+      hasBackdropScope: backdropScope != null,
+      isAndroid: AppPlatform.isAndroid,
+    )) {
+      final resolvedHighlight = Color.alphaBlend(highlight, backer);
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          shape: circular ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: circular ? null : BorderRadius.circular(borderRadius),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[resolvedHighlight, backer],
+          ),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: isDark ? 0.22 : 0.55),
+            width: 0.8,
+          ),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      );
+    }
+
+    final shouldBlurButton =
+        configuration.mode == LiquidGlassEffectMode.enhanced &&
+        backdropScope != null &&
+        !backdropScope.isSolidBackground;
+    final blur = shouldBlurButton
+        ? (configuration.blurSigma * 0.75).clamp(2.0, 20.0)
+        : 0.0;
 
     return GlassContainer(
       shape: circular
@@ -70,12 +114,7 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
         thickness: configuration.mode == LiquidGlassEffectMode.enhanced
             ? 20
             : 16,
-        blur:
-            (configuration.blurSigma *
-                    (configuration.mode == LiquidGlassEffectMode.enhanced
-                        ? 0.75
-                        : 0.6))
-                .clamp(2.0, 20.0),
+        blur: blur,
         chromaticAberration: 0.0015,
         lightIntensity: isDark ? 0.48 : 0.58,
         ambientStrength: isDark ? 0.08 : 0.1,

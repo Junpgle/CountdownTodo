@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../utils/time_utils.dart';
+
 /// 时间点型习惯在某一天的图表数据。
 class HabitTimePointChartData {
   final DateTime date;
@@ -160,10 +162,8 @@ class HabitTimePointChart extends StatelessWidget {
   static String _formatMinute(int minute) {
     if (minute == 24 * 60) return '24:00';
     final normalizedMinute = minute % (24 * 60);
-    final hour = normalizedMinute ~/ 60;
-    final minutePart = normalizedMinute % 60;
     final prefix = minute >= 24 * 60 ? '次日 ' : '';
-    return '$prefix${hour.toString().padLeft(2, '0')}:${minutePart.toString().padLeft(2, '0')}';
+    return '$prefix${AppTimeFormats.minuteOfDay(normalizedMinute)}';
   }
 }
 

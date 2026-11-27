@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:intl/intl.dart';
+
+import '../utils/time_utils.dart';
 
 class TaiService {
   static const String _keyDbPath = 'tai_db_path';
@@ -88,7 +89,7 @@ class TaiService {
     final dbPath = await getSavedDbPath();
     if (dbPath == null || dbPath.isEmpty) return [];
 
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final today = AppTimeFormats.date(DateTime.now());
     return await readDailyStats(dbPath: dbPath, date: today);
   }
 

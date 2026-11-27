@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui show ImageFilter, lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/feature_tip_service.dart';
 import 'app_dialogs.dart';
+import 'app_image_filters.dart';
 import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
@@ -16,7 +16,6 @@ const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
 // closes. An ease-in curve in route coordinates therefore makes the visible
 // collapse start decisively and settle into the source container.
 const _containerTransformReverseCurve = Cubic(0.5, 0.0, 0.75, 0.0);
-const _defaultPageLayerBackgroundScale = 0.875;
 const _defaultPageLayerBackgroundMask = 0.24;
 const _defaultPageLayerMaxBlur = 12.0;
 const _defaultContainerContentStart = 0.28;
@@ -67,6 +66,7 @@ final ValueNotifier<double> _predictiveBackGestureProgress =
     ValueNotifier<double>(0.0);
 
 class _AnimSettings {
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static bool enabled = true;
   static bool systemPowerSaveMode = false;
   static bool lazyLoad = true;
@@ -88,6 +88,8 @@ class _AnimSettings {
           !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
       enabled = prefs.getBool('enable_animations') ?? true;
       lazyLoad = prefs.getBool('enable_lazy_load') ?? true;
+      PageTransitions.skeletonScreenEnabledNotifier.value =
+          prefs.getBool('enable_skeleton_screen') ?? true;
       screenRadius = prefs.getBool('enable_screen_radius') ?? true;
       layerBlur = prefs.getBool('enable_layer_blur') ?? false;
       motionBlur = prefs.getBool('enable_motion_blur') ?? false;
@@ -101,6 +103,7 @@ class _AnimSettings {
       containerContentStart =
           prefs.getInt('container_content_start') ?? (isAndroid ? 12 : 28);
       _loaded = true;
+      revision.value = revision.value + 1;
     } catch (_) {}
   }
 
@@ -115,9 +118,6 @@ class _AnimSettings {
       predictiveBack;
 
   static double get depthFactor => (pageLayerDepth / 100).clamp(0.0, 1.0);
-
-  static double get backgroundScale =>
-      ui.lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
 
   static double get backgroundMask =>
       _defaultPageLayerBackgroundMask * depthFactor;
@@ -140,6 +140,9 @@ class _AnimSettings {
 }
 
 class PageTransitions {
+  static final ValueNotifier<bool> skeletonScreenEnabledNotifier =
+      ValueNotifier<bool>(true);
+
   /// Overlay transitions share the same motion policy as page transitions.
   static Duration containerDuration({bool reverse = false}) =>
       _AnimSettings.animationsEnabled
@@ -155,8 +158,12 @@ class PageTransitions {
   /// Applies Android's transient system Battery Saver state without changing
   /// the user's persisted animation preferences.
   static void setPowerSaveMode(bool enabled) {
+    final changed = _AnimSettings.systemPowerSaveMode != enabled;
     _AnimSettings.systemPowerSaveMode = enabled;
     if (enabled) _predictiveBackGestureProgress.value = 0.0;
+    if (changed) {
+      _AnimSettings.revision.value = _AnimSettings.revision.value + 1;
+    }
   }
 
   static bool get isPowerSaveMode => _AnimSettings.systemPowerSaveMode;
@@ -744,7 +751,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   BorderRadius _cachedScreenCornerRadii = BorderRadius.circular(12.0);
 
   // Cached _AnimSettings values.
-  late double _bgScale;
   late double _bgBlur;
   late double _bgMask;
   late bool _useScreenRadius;
@@ -761,7 +767,19 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     super.initState();
     _initAnimations();
     _cacheSettings();
+    _AnimSettings.revision.addListener(_handleSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _handleSettingsChanged() {
+    _cacheSettings();
+    _lastRoute = -1;
+    _lastBg = -1;
+    _lastGestureProgress = -1;
+    _cachedFrame = null;
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -775,7 +793,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   }
 
   void _cacheSettings() {
-    _bgScale = _AnimSettings.backgroundScale;
     _bgBlur = _AnimSettings.backgroundBlur;
     _bgMask = _AnimSettings.backgroundMask;
     _useScreenRadius = _AnimSettings.screenRadius;
@@ -841,6 +858,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   void dispose() {
+    _AnimSettings.revision.removeListener(_handleSettingsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _disposeAnimations();
     super.dispose();
@@ -912,11 +930,17 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     required bool isReverse,
   }) {
     // Direct arithmetic with cached settings — avoids per-frame getter calls.
-    final scale = 1.0 + (_bgScale - 1.0) * progress;
     final maskOpacity = _bgMask * progress;
 
-    Widget current = scale < 1.0 - _epsilon
-        ? Transform.scale(scale: scale, child: child)
+    // Avoid per-frame Transform.scale on live background text trees, which
+    // invalidates Impeller's glyph atlas every frame; use translation parallax.
+    Widget current = progress > _epsilon
+        ? FractionalTranslation(
+            translation: widget.mode == _PageLayerRouteMode.slideEnd
+                ? Offset(-0.08 * progress, 0.0)
+                : Offset(0.0, -0.025 * progress),
+            child: child,
+          )
         : child;
 
     // Skip expensive ClipRRect + blur during reverse (pop) animation.
@@ -936,7 +960,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       final blur = _bgBlur * progress;
       if (blur > 0.01) {
         current = ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          imageFilter: AppImageFilters.quantizedBlur(blur),
           child: current,
         );
       }
@@ -996,13 +1020,13 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
     switch (widget.mode) {
       case _PageLayerRouteMode.scale:
-        // Direct arithmetic: scale = 0.92 + 0.08 * eased
-        final scale = 0.92 + 0.08 * eased;
+        // Use translation + fade without per-frame scale on live text so
+        // Impeller keeps its glyph atlas warm across transition frames.
+        final d = (1.0 - eased) * 0.045;
         final opacity = 0.75 + 0.25 * eased;
-        if (scale < 1.0 - _epsilon) {
-          current = Transform.scale(
-            scale: scale,
-            alignment: const Alignment(0, -0.45),
+        if (d > _epsilon) {
+          current = FractionalTranslation(
+            translation: Offset(0.0, d),
             child: current,
           );
         }
@@ -1048,7 +1072,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     final sigma = _AnimSettings.motionBlurFor(progress);
     if (sigma <= 0.01) return child;
     return ImageFiltered(
-      imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      imageFilter: AppImageFilters.quantizedBlur(sigma),
       child: child,
     );
   }
@@ -1349,25 +1373,55 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
         Widget content = child ?? const SizedBox.shrink();
 
-        // Morph into the button's shape for both opening and closing animations.
-        // We scale the content so its width exactly matches the current box width.
-        final scaleX = width / screenWidth;
-        if ((scaleX - 1.0).abs() > _epsilon) {
-          content = Transform.scale(
-            scale: scaleX,
-            alignment: Alignment.topCenter,
-            child: content,
-          );
+        // Morph into the button's shape when closing (using the rasterized
+        // SnapshotWidget bitmap). Skip scaling live un-snapshotted subtrees on
+        // forward so Impeller does not re-rasterize glyphs every frame.
+        if (_contentSnapshot.allowSnapshotting) {
+          final scaleX = width / screenWidth;
+          if ((scaleX - 1.0).abs() > _epsilon) {
+            content = Transform.scale(
+              scale: scaleX,
+              alignment: Alignment.topCenter,
+              child: content,
+            );
+          }
         }
 
-        if (fadeIn < 1.0 - _epsilon) {
-          content = Opacity(opacity: fadeIn, child: content);
+        if (fadeIn <= _epsilon) {
+          content = const SizedBox.shrink();
+        } else if (fadeIn < 1.0 - _epsilon) {
+          content = FadeTransition(
+            opacity: AlwaysStoppedAnimation(fadeIn),
+            child: content,
+          );
         }
 
         final surfaceColor = Theme.of(context).colorScheme.surface;
         final effectiveSourceColor = widget.sourceColor.a < 1.0
             ? Color.alphaBlend(widget.sourceColor, surfaceColor)
             : widget.sourceColor;
+        final motionBlurSigma = _AnimSettings.motionBlurFor(t);
+        Widget containerBox = ClipRRect(
+          clipBehavior: Clip.hardEdge,
+          borderRadius: borderRadius,
+          child: ColoredBox(
+            color: effectiveSourceColor,
+            // 懒加载遮罩阶段：中央显示目标页面语义图标。
+            child: !_contentVisible
+                ? Center(child: _buildPlaceholder(context))
+                : IgnorePointer(
+                    // A completed animation can round to 0.9999999999999999.
+                    ignoring: fadeIn < 1.0 - _epsilon,
+                    child: content,
+                  ),
+          ),
+        );
+        if (motionBlurSigma > 0.01) {
+          containerBox = ImageFiltered(
+            imageFilter: AppImageFilters.quantizedBlur(motionBlurSigma),
+            child: containerBox,
+          );
+        }
 
         return Stack(
           fit: StackFit.expand,
@@ -1383,21 +1437,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               top: top,
               width: width,
               height: height,
-              child: ClipRRect(
-                clipBehavior: Clip.hardEdge,
-                borderRadius: borderRadius,
-                child: ColoredBox(
-                  color: effectiveSourceColor,
-                  // 懒加载遮罩阶段：中央显示目标页面语义图标。
-                  child: !_contentVisible
-                      ? Center(child: _buildPlaceholder(context))
-                      : IgnorePointer(
-                          // A completed animation can round to 0.9999999999999999.
-                          ignoring: fadeIn < 1.0 - _epsilon,
-                          child: content,
-                        ),
-                ),
-              ),
+              child: containerBox,
             ),
           ],
         );
@@ -1899,10 +1939,7 @@ class _RenderDialogMorphLayout extends RenderShiftedBox {
       clipBehavior: Clip.hardEdge,
       (context, innerOffset) {
         final paintRect = currentRect.shift(innerOffset);
-        context.canvas.drawRect(
-          paintRect,
-          Paint()..color = _sourceColor,
-        );
+        context.canvas.drawRect(paintRect, Paint()..color = _sourceColor);
 
         if (contentAlpha <= 0) return;
 
@@ -1911,23 +1948,21 @@ class _RenderDialogMorphLayout extends RenderShiftedBox {
           ..translateByDouble(paintRect.left, paintRect.top, 0.0, 1.0)
           ..scaleByDouble(scale, scale, 1.0, 1.0);
 
-        context.pushTransform(
-          needsCompositing,
-          Offset.zero,
-          transform,
-          (context, childOffset) {
-            if (contentAlpha >= 255) {
-              context.paintChild(child, childOffset);
-            } else {
-              context.pushOpacity(
-                childOffset,
-                contentAlpha,
-                (context, opacityOffset) =>
-                    context.paintChild(child, opacityOffset),
-              );
-            }
-          },
-        );
+        context.pushTransform(needsCompositing, Offset.zero, transform, (
+          context,
+          childOffset,
+        ) {
+          if (contentAlpha >= 255) {
+            context.paintChild(child, childOffset);
+          } else {
+            context.pushOpacity(
+              childOffset,
+              contentAlpha,
+              (context, opacityOffset) =>
+                  context.paintChild(child, opacityOffset),
+            );
+          }
+        });
       },
     );
   }

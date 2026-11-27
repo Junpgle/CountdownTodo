@@ -73,4 +73,31 @@ void main() {
     final nextButtonFinder = find.widgetWithText(FilledButton, '下一步');
     expect(nextButtonFinder, findsOneWidget);
   });
+
+  testWidgets('HabitEditScreen includes and applies 戒掉饮料 template', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: HabitEditScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('从模板创建'));
+    await tester.pumpAndSettle();
+
+    final templateFinder = find.text('戒掉饮料');
+    expect(templateFinder, findsOneWidget);
+
+    await tester.tap(templateFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.text('已选：戒掉饮料'), findsOneWidget);
+    final nameField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(nameField.controller?.text, '戒掉饮料');
+  });
 }

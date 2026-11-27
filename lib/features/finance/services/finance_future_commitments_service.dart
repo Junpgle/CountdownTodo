@@ -1,6 +1,7 @@
 import '../models/finance_models.dart';
 import 'finance_automation_service.dart';
 import 'finance_repository.dart';
+import '../../../utils/calendar_date_math.dart';
 
 class FinanceFutureCommitment {
   const FinanceFutureCommitment._({
@@ -140,7 +141,7 @@ abstract final class FinanceFutureCommitmentsService {
     int horizonMonths = 3,
   }) async {
     final endExclusive = endExclusiveFor(now, horizonMonths);
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final values = await Future.wait<dynamic>([
       FinanceRepository.getRecurringRules(),
       FinanceRepository.getLoans(),
@@ -185,7 +186,7 @@ abstract final class FinanceFutureCommitmentsService {
     Set<String> materializedRecurringTransactionUuids = const {},
   }) {
     final endExclusive = endExclusiveFor(now, horizonMonths);
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final dues = FinanceAutomationService.upcoming(
       rules: recurringRules.toList(growable: false),
       now: today,
@@ -222,7 +223,7 @@ abstract final class FinanceFutureCommitmentsService {
           continue;
         }
         final dueDate = dateFromKey(installment.dueDate);
-        final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
+        final dueDay = CalendarDateMath.dateOnly(dueDate);
         final item = FinanceFutureCommitment.loanInstallment(
           loan: loan,
           installment: installment,
@@ -292,7 +293,7 @@ abstract final class FinanceFutureCommitmentsService {
       return false;
     }
     final ledgerDay = dateFromKey(transaction.transactionDate);
-    final day = DateTime(ledgerDay.year, ledgerDay.month, ledgerDay.day);
+    final day = CalendarDateMath.dateOnly(ledgerDay);
     if (day.isBefore(today) || !day.isBefore(endExclusive)) return false;
     if (dateKey(day) == dateKey(today)) {
       return transaction.balanceEventAt() > now.millisecondsSinceEpoch;

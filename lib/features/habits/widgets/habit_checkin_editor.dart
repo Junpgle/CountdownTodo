@@ -6,6 +6,7 @@ import '../models/habit_goal_rule.dart';
 import '../services/habit_rule_resolver.dart';
 import 'habit_format.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 /// 打卡记录编辑结果。返回副本，调用方确认后再交给仓储保存。
 Future<HabitCheckIn?> showHabitCheckInEditor({
@@ -139,7 +140,7 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
     final edited = HabitCheckIn.fromJson(checkIn.toJson());
     if (isTimeType) {
       edited
-        ..occurredAt = editedTime.toUtc().millisecondsSinceEpoch
+        ..occurredAt = AppTimeFormats.toServerTimestamp(editedTime)
         ..logicalDate = HabitRuleResolver.dayKey(
           HabitRuleResolver.logicalDateFor(editedTime, rule.dayBoundaryMinute),
         )

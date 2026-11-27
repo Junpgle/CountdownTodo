@@ -11,6 +11,7 @@ import 'package:countdown_todo/services/api_service.dart';
 import 'package:countdown_todo/services/plan_backlog_repository.dart';
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 import 'package:countdown_todo/widgets/plan_block_editor_sheet.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -432,7 +433,7 @@ void main() {
 
     expect(requests, hasLength(2));
     expect(find.text('待安排 1 项'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(AppSkeletonScope), findsOneWidget);
 
     requests[1].complete(actual);
     await tester.pumpAndSettle();

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../utils/time_utils.dart';
+
 /// 定期自动备份配置。
 class AutoBackupConfig {
   static const int defaultIntervalDays = 1;
@@ -146,13 +148,7 @@ class AutoBackupPolicy {
 
   /// 生成自动备份文件名：`cdt_auto_backup_yyyyMMdd_HHmmss.json`。
   static String buildBackupFileName(DateTime time) {
-    final y = time.year.toString().padLeft(4, '0');
-    final m = time.month.toString().padLeft(2, '0');
-    final d = time.day.toString().padLeft(2, '0');
-    final hh = time.hour.toString().padLeft(2, '0');
-    final mm = time.minute.toString().padLeft(2, '0');
-    final ss = time.second.toString().padLeft(2, '0');
-    return '$filePrefix$y$m${d}_$hh$mm$ss$fileExtension';
+    return '$filePrefix${AppTimeFormats.fileTimestamp(time)}$fileExtension';
   }
 
   /// 判断文件名是否属于本功能生成的自动备份文件。
@@ -177,7 +173,10 @@ class AutoBackupPolicy {
   static String sanitizeUsernameForPath(String username) {
     final trimmed = username.trim();
     if (trimmed.isEmpty) return 'default';
-    final sanitized = trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final sanitized = trimmed.replaceAll(_rxCached16_1, '_');
     return sanitized.isEmpty ? 'default' : sanitized;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached16_1 = RegExp(r'[^a-zA-Z0-9._-]');

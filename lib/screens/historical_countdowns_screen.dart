@@ -1,22 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
-
-final Map<String?, DateFormat> _historicalCountdownDateFormats = {};
-
-DateFormat _historicalCountdownDateFormat() {
-  final locale = Intl.defaultLocale;
-  return _historicalCountdownDateFormats.putIfAbsent(
-    locale,
-    () => DateFormat('yyyy-MM-dd', locale),
-  );
-}
 
 class HistoricalCountdownsScreen extends StatefulWidget {
   final String username;
@@ -104,30 +95,15 @@ class _HistoricalCountdownsScreenState
   Future<void> _confirmDelete(CountdownItem item) async {
     if (_deletingId != null) return;
     final scheme = Theme.of(context).colorScheme;
-    final confirm = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
-        title: const Text('彻底删除这段记录？'),
-        content: Text('“${item.title}”将被永久删除，删除后无法恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: scheme.error,
-              foregroundColor: scheme.onError,
-            ),
-            child: const Text('确认删除'),
-          ),
-        ],
-      ),
+    final confirm = await AppDialogs.confirm(
+      context,
+      icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
+      title: '彻底删除这段记录？',
+      message: '“${item.title}”将被永久删除，删除后无法恢复。',
+      confirmLabel: '确认删除',
+      destructive: true,
     );
-    if (confirm != true || !mounted || _deletingId != null) return;
+    if (!confirm || !mounted || _deletingId != null) return;
     setState(() => _deletingId = item.id);
     try {
       if (widget.deleteCountdown != null) {
@@ -229,7 +205,11 @@ class _HistoricalCountdownsScreenState
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 5,
+                itemHeight: 88,
+              )
             : RefreshIndicator(
                 onRefresh: _loadData,
                 child: ManagementPage.builder(
@@ -257,7 +237,6 @@ class _HistoricalCountdownsScreenState
     final scheme = theme.colorScheme;
     final days = CalendarDateMath.daysBetween(item.targetDate, _now());
     final busy = _deletingId == item.id;
-    final targetDateFormat = _historicalCountdownDateFormat();
     return ManagementCard(
       key: ValueKey(item.id),
       child: Column(
@@ -291,7 +270,7 @@ class _HistoricalCountdownsScreenState
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '目标日 · ${targetDateFormat.format(item.targetDate)}',
+                      '目标日 · ${AppTimeFormats.date(item.targetDate)}',
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                   ],

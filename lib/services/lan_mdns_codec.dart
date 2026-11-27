@@ -290,7 +290,7 @@ class LanMdnsCodec {
   }
 
   static String _sanitizeLabel(String raw) {
-    final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+    final cleaned = raw.replaceAll(_rxCached31_1, '');
     if (cleaned.isEmpty) return 'cdt-node';
     return cleaned.length > 48 ? cleaned.substring(0, 48) : cleaned;
   }
@@ -329,3 +329,6 @@ class _DnsNameResult {
   final String name;
   final int nextOffset;
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached31_1 = RegExp(r'[^a-zA-Z0-9_-]');

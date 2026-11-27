@@ -7,6 +7,8 @@ import 'dart:convert';
 
 import 'utils/analysis_image_cleanup.dart';
 import 'utils/json_value_parser.dart';
+import 'utils/time_utils.dart';
+import 'utils/calendar_date_math.dart';
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -174,6 +176,33 @@ enum RecurrenceType {
   weekdays,
 }
 
+/// Parses a serialized [RecurrenceType] from either a string key or enum index.
+RecurrenceType parseRecurrenceType(Object? value) {
+  if (value is RecurrenceType) return value;
+  final index = value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString() ?? '');
+  if (index != null && index >= 0 && index < RecurrenceType.values.length) {
+    return RecurrenceType.values[index];
+  }
+  switch (value?.toString()) {
+    case 'daily':
+      return RecurrenceType.daily;
+    case 'weekly':
+      return RecurrenceType.weekly;
+    case 'monthly':
+      return RecurrenceType.monthly;
+    case 'yearly':
+      return RecurrenceType.yearly;
+    case 'weekdays':
+      return RecurrenceType.weekdays;
+    case 'customDays':
+      return RecurrenceType.customDays;
+    default:
+      return RecurrenceType.none;
+  }
+}
+
 /// The scope applied when editing a materialized fixed-schedule series.
 enum FixedScheduleEditScope { occurrence, future, series }
 
@@ -285,10 +314,8 @@ class TodoItem {
     version++;
   }
 
-  DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
-    createdDate ?? createdAt,
-    isUtc: true,
-  ).toLocal();
+  DateTime get effectiveStartTime =>
+      AppTimeFormats.localFromServerTimestamp(createdDate ?? createdAt);
 
   TodoTimeMode get timeMode {
     final end = dueDate?.toLocal();
@@ -324,7 +351,7 @@ class TodoItem {
     final due = dueDate;
     if (due == null || timeMode != TodoTimeMode.dateOnly) return due;
     final localDue = due.toLocal();
-    final nextDay = DateTime(localDue.year, localDue.month, localDue.day + 1);
+    final nextDay = AppTimeFormats.localDayStartOffset(localDue, 1);
     return nextDay.subtract(const Duration(milliseconds: 1));
   }
 
@@ -391,7 +418,7 @@ class TodoItem {
       final source = selectedDate ?? dueDate;
       if (source == null) return (start: null, due: null);
       return (
-        start: DateTime(source.year, source.month, source.day),
+        start: CalendarDateMath.dateOnly(source),
         due: DateTime(source.year, source.month, source.day, 23, 59),
       );
     }
@@ -443,8 +470,12 @@ class TodoItem {
     'customIntervalDays': customIntervalDays,
     'custom_interval_days': customIntervalDays,
     // 循环结束日：同时输出两种键名
-    'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
-    'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+    'recurrenceEndDate': AppTimeFormats.toNullableServerTimestamp(
+      recurrenceEndDate,
+    ),
+    'recurrence_end_date': AppTimeFormats.toNullableServerTimestamp(
+      recurrenceEndDate,
+    ),
     'remark': remark, // 📝 备注（可为 null）
     'image_path': imagePath, // 📸 图片路径
     'original_text': originalText, // 📄 原始分析文本
@@ -826,7 +857,7 @@ int? _parseNullableTimestamp(dynamic val) {
   if (parsed != null) return parsed;
   if (val is String) {
     final date = DateTime.tryParse(val.trim());
-    if (date != null) return date.toUtc().millisecondsSinceEpoch;
+    if (date != null) return AppTimeFormats.toServerTimestamp(date);
   }
   return null;
 }
@@ -841,7 +872,7 @@ DateTime? _parseDateField(dynamic val) {
 
 DateTime? _localDateCopy(DateTime? value) {
   if (value == null) return null;
-  return _parseDateField(value.toUtc().millisecondsSinceEpoch);
+  return _parseDateField(AppTimeFormats.toServerTimestamp(value));
 }
 
 String? _emptyStringToNull(String? value) {
@@ -1123,7 +1154,7 @@ class FixedScheduleItem {
     final parsedDate = DateTime.tryParse(date)?.toLocal();
     final start = DateTime.fromMillisecondsSinceEpoch(startTime!).toLocal();
     final day = parsedDate ?? start;
-    return DateTime(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
+    return AppTimeFormats.localDayStartOffset(day, 1).millisecondsSinceEpoch;
   }
 
   FixedScheduleItem({
@@ -1406,9 +1437,9 @@ class CourseItem {
   }
 
   String get formattedStartTime =>
-      '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
+      AppTimeFormats.hourMinute(startTime ~/ 100, startTime % 100);
   String get formattedEndTime =>
-      '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+      AppTimeFormats.hourMinute(endTime ~/ 100, endTime % 100);
 
   Map<String, dynamic> toJson() => {
     'uuid': uuid,

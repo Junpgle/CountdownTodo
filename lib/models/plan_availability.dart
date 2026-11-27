@@ -1,5 +1,7 @@
 import '../models.dart';
 import 'plan_weekly_availability.dart';
+import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 enum PlanBusySource {
   course,
@@ -124,8 +126,8 @@ class PlanAvailabilityQuery {
     busy.start.subtract(Duration(minutes: bufferAfter)),
     busy.end.add(Duration(minutes: bufferBefore)),
   );
-  DateTime get dayStart => DateTime(date.year, date.month, date.day);
-  DateTime get dayEnd => DateTime(date.year, date.month, date.day + 1);
+  DateTime get dayStart => CalendarDateMath.dateOnly(date);
+  DateTime get dayEnd => AppTimeFormats.localDayStartOffset(date, 1);
 }
 
 /// The fixed-schedule occurrence that bounds a preparation plan. The start
@@ -244,6 +246,16 @@ class PlanAvailabilityException implements Exception {
   final bool canUseAppOnly;
   @override
   String toString() => message;
+}
+
+/// Extracts a user-facing message from planning errors.
+///
+/// Prefers [PlanAvailabilityException.message], then [StateError.message],
+/// and falls back to [fallback] or `error.toString()`.
+String formatPlanErrorMessage(Object error, {String? fallback}) {
+  if (error is PlanAvailabilityException) return error.message;
+  if (error is StateError) return error.message.toString();
+  return fallback ?? error.toString();
 }
 
 /// Shared read-only occupancy for a local date, independent of any target todo.

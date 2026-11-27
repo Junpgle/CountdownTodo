@@ -1,13 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../models/minor_age_signal_state.dart';
 import '../../../models/minor_mode_state.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/settings_navigation.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../../../widgets/floating_glass_control.dart';
@@ -27,46 +26,21 @@ class MinorModeSettingsPage extends StatefulWidget {
   State<MinorModeSettingsPage> createState() => _MinorModeSettingsPageState();
 }
 
-class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
+class _MinorModeSettingsPageState extends State<MinorModeSettingsPage>
+    with SettingsTargetHighlightMixin<MinorModeSettingsPage> {
   final Map<String, GlobalKey> _itemKeys = {
     'minor_mode': GlobalKey(),
     'minor_mode_status': GlobalKey(),
   };
-  String? _highlightTarget;
-  Timer? _highlightTimer;
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   @override
   void initState() {
     super.initState();
     MinorModeService.instance.initialize();
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToTarget(widget.initialTarget!);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _highlightTimer?.cancel();
-    super.dispose();
-  }
-
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    if (key?.currentContext == null) return;
-    setState(() => _highlightTarget = target);
-    Scrollable.ensureVisible(
-      key!.currentContext!,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      alignment: 0.15,
-    );
-    _highlightTimer?.cancel();
-    _highlightTimer = Timer(const Duration(seconds: 3), () {
-      _highlightTimer = null;
-      if (mounted) setState(() => _highlightTarget = null);
-    });
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   Future<void> _setManualEnabled(bool enabled) async {
@@ -249,7 +223,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
       children: [
         AppSettingsHighlightedTile(
           targetId: 'minor_mode_status',
-          highlightTarget: _highlightTarget,
+          highlightTarget: highlightTarget,
           itemKeys: _itemKeys,
           borderRadius: BorderRadius.zero,
           child: ListTile(
@@ -517,7 +491,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
       children: [
         AppSettingsHighlightedTile(
           targetId: 'minor_mode',
-          highlightTarget: _highlightTarget,
+          highlightTarget: highlightTarget,
           itemKeys: _itemKeys,
           borderRadius: BorderRadius.zero,
           child: _buildToggleCard(
@@ -546,9 +520,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                 : '仅保存在本机：${MinorAgeBandSystemMapping.fromBirthDate(birthDate).label}',
           ),
           trailing: Text(
-            birthDate == null
-                ? '未设置'
-                : DateFormat('yyyy-MM-dd').format(birthDate),
+            birthDate == null ? '未设置' : AppTimeFormats.date(birthDate),
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
           onTap: _pickManualBirthDate,

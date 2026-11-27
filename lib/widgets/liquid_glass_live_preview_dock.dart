@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/navigator_utils.dart';
+import 'app_sheet_widgets.dart';
 import 'floating_glass_control.dart';
 
 /// Floating live-preview dock shown across home dashboard and other screens
@@ -327,16 +328,10 @@ class _DockContent extends StatelessWidget {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: LiquidGlassEffectService.collapseFloatingPanel,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2, bottom: 6),
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+                child: AppSheetDragHandle(
+                  width: 36,
+                  margin: const EdgeInsets.only(top: 2, bottom: 6),
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.6),
                 ),
               ),
               Row(

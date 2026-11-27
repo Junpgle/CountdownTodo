@@ -9,6 +9,7 @@ export 'floating_glass_control.dart'
     show
         FloatingGlassAppBar,
         FloatingGlassAppBarAction,
+        FloatingGlassAppBarActionGroup,
         FloatingGlassActionButton,
         FloatingGlassControl,
         LiquidGlassSwitch,

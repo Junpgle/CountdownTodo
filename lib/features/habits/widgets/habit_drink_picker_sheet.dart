@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_drink_log_service.dart';
 import '../services/habit_rule_resolver.dart';
+import '../utils/habit_emoji_utils.dart';
+import 'habit_emoji_picker_dialog.dart';
 import 'habit_emoji_text.dart';
 
 /// 戒掉饮料类习惯的「今天喝了什么」快捷选择面板。
@@ -280,9 +284,8 @@ class _HabitDrinkPickerSheetState extends State<HabitDrinkPickerSheet> {
         widget.logicalDate.year == now.year &&
         widget.logicalDate.month == now.month &&
         widget.logicalDate.day == now.day;
-    final weekdayChar = '一二三四五六日'[widget.logicalDate.weekday - 1];
     final dateLabel =
-        '${widget.logicalDate.month} 月 ${widget.logicalDate.day} 日 · 周$weekdayChar';
+        '${widget.logicalDate.month} 月 ${widget.logicalDate.day} 日 · ${AppTimeFormats.weekdayLabel(widget.logicalDate)}';
     final selectedList = _orderedSelectedIcons();
 
     return SafeArea(
@@ -356,9 +359,11 @@ class _HabitDrinkPickerSheetState extends State<HabitDrinkPickerSheet> {
             ),
             const SizedBox(height: 12),
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 28),
-                child: Center(child: CircularProgressIndicator()),
+              const AppSkeletonSheetList(
+                itemCount: 4,
+                itemHeight: 54,
+                shrinkWrap: true,
+                padding: EdgeInsets.symmetric(vertical: 8),
               )
             else ...[
               if (!_manageMode) ...[
@@ -715,6 +720,7 @@ class _HabitDrinkOptionEditorDialogState
   late final TextEditingController _iconController;
   late final TextEditingController _labelController;
   late String _selectedIcon;
+  String? _iconError;
 
   @override
   void initState() {
@@ -731,6 +737,21 @@ class _HabitDrinkOptionEditorDialogState
     super.dispose();
   }
 
+  Future<void> _openFullEmojiPicker() async {
+    final picked = await HabitEmojiPickerDialog.show(
+      context,
+      initialIcon: _selectedIcon.isNotEmpty ? _selectedIcon : '🍋',
+      initialCategory: HabitEmojiCategory.foodAndDrink,
+      title: '选择饮品图标',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _selectedIcon = picked;
+      _iconController.text = picked;
+      _iconError = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -743,20 +764,41 @@ class _HabitDrinkOptionEditorDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 72,
+                  width: 84,
                   child: TextField(
+                    key: const ValueKey('drink-option-icon-input'),
                     controller: _iconController,
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 22),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: '图标',
-                      border: OutlineInputBorder(),
+                      errorText: _iconError,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                     onChanged: (value) {
-                      setState(() => _selectedIcon = value.trim());
+                      final composing = _iconController.value.composing;
+                      if (composing.isValid && !composing.isCollapsed) {
+                        return;
+                      }
+                      if (value.trim().isEmpty) {
+                        setState(() => _iconError = null);
+                        return;
+                      }
+                      final extracted = HabitEmojiUtils.extractSingleEmoji(
+                        value,
+                      );
+                      setState(() {
+                        if (extracted != null) {
+                          _selectedIcon = extracted;
+                          _iconError = null;
+                        } else {
+                          _iconError = '请输入 1 个 Emoji';
+                        }
+                      });
                     },
                   ),
                 ),
@@ -776,13 +818,29 @@ class _HabitDrinkOptionEditorDialogState
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              '选择图标',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '选择图标',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  key: const ValueKey('drink-more-emoji-button'),
+                  onPressed: _openFullEmojiPicker,
+                  icon: const Icon(Icons.emoji_emotions_outlined, size: 16),
+                  label: const Text('全部 Emoji'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -796,6 +854,7 @@ class _HabitDrinkOptionEditorDialogState
                       setState(() {
                         _selectedIcon = emoji;
                         _iconController.text = emoji;
+                        _iconError = null;
                       });
                     },
                     child: Container(
@@ -837,9 +896,16 @@ class _HabitDrinkOptionEditorDialogState
         ),
         FilledButton(
           onPressed: () {
-            final icon = _iconController.text.trim();
+            final rawIcon = _iconController.text.trim();
+            final icon = rawIcon.isEmpty
+                ? (_selectedIcon.isNotEmpty ? _selectedIcon : null)
+                : HabitEmojiUtils.extractSingleEmoji(rawIcon);
+            if (icon == null) {
+              setState(() => _iconError = '请输入 1 个 Emoji');
+              return;
+            }
             final label = _labelController.text.trim();
-            if (icon.isEmpty || label.isEmpty) return;
+            if (label.isEmpty) return;
             Navigator.of(context).pop((type: 'save', icon: icon, label: label));
           },
           child: const Text('保存'),

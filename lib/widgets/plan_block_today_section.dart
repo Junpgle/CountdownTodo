@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
@@ -34,16 +33,6 @@ import '../screens/add_todo_screen.dart';
 import '../utils/app_dialogs.dart';
 import 'floating_glass_control.dart';
 import 'home_agenda_card.dart';
-
-final Map<(String?, String), DateFormat> _planTodayDateFormats = {};
-
-DateFormat _planTodayDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planTodayDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 /// Display reloads never trigger the legacy missed-state maintenance.
 class PlanBlockTodaySection extends StatefulWidget {
@@ -512,8 +501,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
       failed = true;
       if (mounted) {
         if (preserveOnError) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('$error')));
+          AppSnackBars.showSnackBar(context, SnackBar(content: Text('$error')));
         } else {
           setState(() {
             _data = null;
@@ -711,8 +699,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$error')));
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text('$error')));
       }
     } finally {
       if (mounted) {
@@ -733,7 +720,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         final page = TodoPlanScreen(
           username: widget.username,
           initialDate: tomorrow
-              ? DateTime(day.year, day.month, day.day + 1)
+              ? AppTimeFormats.localDayStartOffset(day, 1)
               : day,
         );
         if (sourceKey != null) {
@@ -899,7 +886,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     if (!mounted || !_active || route?.isCurrent == false) return;
 
     final block = request.block;
-    final format = _planTodayDateFormat('M月d日 HH:mm');
+    final format = AppTimeFormats.dateFormatter('M月d日 HH:mm');
     var saving = false;
     String? saveError;
     final confirmedReceipt = await showAppDialog<PlanManualCompletionReceipt>(
@@ -1086,8 +1073,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           : _error != null
           ? '今日规划读取失败：$_error'
           : '今日规划尚未就绪，正在重新读取';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
       if (!_loading && !_opening) unawaited(_load());
       return;
     }
@@ -1194,9 +1180,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
   String _range(PlanReviewEntry entry) {
     final a = DateTime.fromMillisecondsSinceEpoch(entry.start);
     final b = DateTime.fromMillisecondsSinceEpoch(entry.end);
-    final pattern = DateUtils.isSameDay(a, b) ? 'HH:mm' : 'MM-dd HH:mm';
-    final dateFormat = _planTodayDateFormat(pattern);
-    return '${dateFormat.format(a)}–${dateFormat.format(b)}';
+    final pattern = AppTimeFormats.isSameDay(a, b) ? 'HH:mm' : 'MM-dd HH:mm';
+    return AppTimeFormats.range(a, b, pattern: pattern, separator: '–');
   }
 
   Widget _metrics(double width, PlanReviewOverview data) {

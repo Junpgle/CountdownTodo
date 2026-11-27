@@ -3,9 +3,8 @@ import 'plan_weekly_availability_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../models/plan_availability.dart';
+import '../utils/prefs_reload_coalescer.dart';
 
 class PlanAvoidancePreferences {
   const PlanAvoidancePreferences(
@@ -60,8 +59,7 @@ class PlanAvailabilityPreferences {
     // Reopening immediately after a tap must see that tap's persisted value.
     final pending = _pendingWrites;
     if (pending != null) await pending;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final options = List<PlanDailyTimeWindow>.of(defaultWindows);
     final selected = <int>{};
     var before = 0, after = 0;
@@ -222,14 +220,14 @@ class PlanAvailabilityPreferences {
     final previous = _pendingWrites;
     final write = () async {
       if (previous != null) await previous;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
+      final prefs = await PrefsReloadCoalescer.getFresh();
 
       if (updateAvoidance) {
         final raw = jsonEncode({'version': 1, 'windows': windows});
         if (!await prefs.setString(_windowsKey(username), raw)) {
           throw StateError('Unable to save availability avoidance settings');
         }
+        PrefsReloadCoalescer.markFresh();
       }
 
       if (updateBuffers) {
@@ -301,6 +299,7 @@ class PlanAvailabilityPreferences {
         if (!await prefs.setString(_buffersKey(username), raw)) {
           throw StateError('Unable to save availability buffers');
         }
+        PrefsReloadCoalescer.markFresh();
       }
     }();
     final pending = write.catchError((Object _) {});

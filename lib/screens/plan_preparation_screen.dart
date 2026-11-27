@@ -11,11 +11,14 @@ import '../services/plan_availability_service.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../services/time_estimation_service.dart';
 import '../storage_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../utils/page_transitions.dart';
 import '../utils/time_utils.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/time_estimation_hint.dart';
+import '../utils/app_dialogs.dart';
 import 'todo_plan_screen.dart';
+import '../utils/calendar_date_math.dart';
 
 typedef PlanPreparationScheduleLoader = Future<FixedScheduleItem?> Function(
   String username,
@@ -97,7 +100,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   DateTime get _pageStart {
     final now = _now;
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     return today.add(Duration(days: _pageOffset));
   }
 
@@ -228,7 +231,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
     } catch (error) {
       if (mounted && generation == _generation) {
         setState(() {
-          _error = error is StateError ? error.message.toString() : '$error';
+          _error = formatPlanErrorMessage(error);
           _loading = false;
         });
       }
@@ -300,7 +303,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
     } catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() {
-        _error = error is StateError ? error.message.toString() : '$error';
+        _error = formatPlanErrorMessage(error);
         _result = null;
         _searching = false;
       });
@@ -317,7 +320,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
   }
 
   Future<void> _useAppOnly() async {
-    final allowed = await showDialog<bool>(
+    final allowed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('仅检查应用内日程？'),
@@ -345,13 +348,8 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
     final result = _result;
     if (result == null || !result.end.isAfter(_pageStart)) return false;
     return result.end.isBefore(_preparationEnd) ||
-        DateTime(result.end.year, result.end.month, result.end.day).isBefore(
-          DateTime(
-            _preparationEnd.year,
-            _preparationEnd.month,
-            _preparationEnd.day,
-          ),
-        );
+        CalendarDateMath.dateOnly(result.end)
+            .isBefore(CalendarDateMath.dateOnly(_preparationEnd));
   }
 
   String _dateLabel(DateTime date) => AppTimeFormats.format(date, 'yyyy年M月d日');
@@ -413,12 +411,9 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              error is StateError ? error.message.toString() : '$error',
-            ),
-          ),
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(formatPlanErrorMessage(error))),
         );
         await _load();
       }
@@ -667,10 +662,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
   ) {
     final start = selection.slot.start;
     final end = selection.slot.end;
-    final sameDay =
-        start.year == end.year &&
-        start.month == end.month &&
-        start.day == end.day;
+    final sameDay = AppTimeFormats.isSameDay(start, end);
     return Card(
       key: ValueKey('preparation-candidate-$index'),
       child: Padding(
@@ -737,9 +729,11 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
 
   Widget _resultSection(ColorScheme colors, ThemeData theme) {
     if (_searching) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 28),
-        child: Center(child: CircularProgressIndicator()),
+      return const AppSkeletonSheetList(
+        itemCount: 3,
+        itemHeight: 56,
+        shrinkWrap: true,
+        padding: EdgeInsets.symmetric(vertical: 8),
       );
     }
     final result = _result;
@@ -815,7 +809,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
       key: const ValueKey('fixed-schedule-preparation-screen'),
       appBar: AppBar(title: const Text('安排准备时间')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppSkeletonFormPage(fieldCount: 4)
           : SafeArea(
               child: _error != null
                   ? Center(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -18,6 +19,7 @@ import '../services/habit_streak_service.dart';
 import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef _HabitAnalysisInputs = ({
   Map<String, List<HabitCheckIn>> checkInsByHabit,
@@ -192,7 +194,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     required _HabitAnalysisInputs inputs,
     required DateTime now,
   }) async {
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final from = HabitRuleResolver.addCalendarDays(today, -29);
     final trend = List<int>.filled(30, 0);
     final weekPlans =
@@ -374,7 +376,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
     required DateTime now,
   }) async {
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final from = HabitRuleResolver.addCalendarDays(today, -29);
     final calculationGoals = goals
         .where((goal) => rulesByHabit[goal.uuid]?.isNotEmpty == true)
@@ -417,7 +419,16 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading && _goals.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return AppSkeletonDashboardPage(
+        topPadding: widget.topPadding + 8,
+        maxWidth: 840,
+        showMetricGrid: true,
+        showChart: true,
+        listCount: 4,
+        wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+        wideBreakpoint: 600,
+        wideListColumns: 2,
+      );
     }
     if (_goals.isEmpty) {
       return Center(
@@ -589,7 +600,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         ? 0
         : _monthTrend.reduce((a, b) => a > b ? a : b);
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final first = HabitRuleResolver.addCalendarDays(today, -29);
     final firstWeekday = first.weekday; // 1 = Monday, 7 = Sunday
 
@@ -687,7 +698,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
                         i % 2 == 0
-                            ? ['一', '二', '三', '四', '五', '六', '日'][i]
+                            ? AppTimeFormats.weekdayShortLabelsZh[i]
                             : '',
                         style: TextStyle(
                           fontSize: 9,
@@ -954,7 +965,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         }
     }
     if (summary.weakestWeekday != null) {
-      extras.add('易中断：周${'一二三四五六日'[summary.weakestWeekday!]}');
+      extras.add(
+        '易中断：周${AppTimeFormats.weekdayShortLabelsZh[summary.weakestWeekday!]}',
+      );
     }
 
     return Wrap(
@@ -998,7 +1011,8 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     if (summary.currentStreak > 7) {
       insight = '太棒了！你已经连续坚持超过一周，继续保持！🔥';
     } else if (summary.weakestWeekday != null) {
-      final weekday = '一二三四五六日'[summary.weakestWeekday!];
+      final weekday =
+          AppTimeFormats.weekdayShortLabelsZh[summary.weakestWeekday!];
       insight = '小提示：周$weekday的达成率偏低，那天可以多给自己设点提醒哦。💡';
     } else if (summary.rate30 >= 0.8) {
       insight = '近 30 天表现极其优秀，习惯已经快要刻入你的 DNA 里啦！🧬';

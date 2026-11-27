@@ -305,7 +305,7 @@ mixin _StorageCore on _StorageServiceBase {
   Future<List<String>> getHistory(String username) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> rawList = prefs.getStringList("history_$username") ?? [];
-    final timeFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
+    final timeFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm:ss');
     return rawList.map((item) {
       try {
         var map = jsonDecode(item);
@@ -332,9 +332,7 @@ mixin _StorageCore on _StorageServiceBase {
         int score = map['score'], duration = map['duration'];
         if (map['date'] != null) {
           DateTime date = DateTime.parse(map['date']);
-          if (date.year == now.year &&
-              date.month == now.month &&
-              date.day == now.day) {
+          if (AppTimeFormats.isSameDay(date, now)) {
             todayCount++;
           }
         }

@@ -6,9 +6,12 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
+import '../utils/digest_utils.dart';
 import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
+import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 class PlanBacklogRow {
   factory PlanBacklogRow(Map<String, Object?> row, bool paused) {
@@ -115,9 +118,9 @@ class PlanBacklogRepository {
         databaseOverride ??
         await DatabaseHelper.instance.databaseForUser(username);
     final instant = now;
-    final day = DateTime(target.year, target.month, target.day);
-    final tomorrow = DateTime(day.year, day.month, day.day + 1);
-    final midnight = DateTime(instant.year, instant.month, instant.day + 1);
+    final day = CalendarDateMath.dateOnly(target);
+    final tomorrow = AppTimeFormats.localDayStartOffset(day, 1);
+    final midnight = AppTimeFormats.localDayStartOffset(instant, 1);
     final ms = instant.millisecondsSinceEpoch;
     final escaped = search
         .trim()
@@ -248,11 +251,7 @@ class PlanBacklogRepository {
                 boundariesRow.single['boundary'],
                 count.single['legacy_boundary'],
                 run?.toJson(),
-                DateTime(
-                  instant.year,
-                  instant.month,
-                  instant.day,
-                ).millisecondsSinceEpoch,
+                CalendarDateMath.dateOnly(instant).millisecondsSinceEpoch,
               ]),
             ),
           )
@@ -325,7 +324,7 @@ class PlanBacklogRepository {
     DatabaseExecutor db,
     PlanTodoIdentity identity,
   ) async {
-    final digest = _DigestSink();
+    final digest = SingleDigestSink();
     final sink = sha256.startChunkedConversion(digest);
     for (final (table, key, projection, where, args) in [
       (
@@ -393,15 +392,4 @@ class PlanBacklogRepository {
       return (todo, PlanBacklogSaveContext(identity, id, fingerprint));
     });
   }
-}
-
-class _DigestSink implements Sink<Digest> {
-  Digest? value;
-  @override
-  void add(Digest data) {
-    value = data;
-  }
-
-  @override
-  void close() {}
 }

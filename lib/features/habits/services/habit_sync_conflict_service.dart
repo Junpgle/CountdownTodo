@@ -77,9 +77,9 @@ abstract final class HabitSyncConflictService {
   }
 
   static String _snakeCase(String value) => value
-      .replaceAllMapped(
-        RegExp(r'[A-Z]'),
-        (match) => '_${match[0]!.toLowerCase()}',
-      )
+      .replaceAllMapped(_rxCached9_1, (match) => '_${match[0]!.toLowerCase()}')
       .replaceAll('__', '_');
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached9_1 = RegExp(r'[A-Z]');

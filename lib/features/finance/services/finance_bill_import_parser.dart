@@ -8,6 +8,7 @@ import 'package:xml/xml.dart';
 
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
+import '../../../utils/text_utils.dart';
 
 /// 支持导入的第三方账单平台。
 enum FinanceBillPlatform {
@@ -113,7 +114,7 @@ class FinanceBillImportItem {
       transactionDate: transactionDate,
       occurredAt: occurredAt,
       timezoneOffsetMinutes: timezoneOffsetMinutes,
-      merchant: merchant.trim().isEmpty ? null : merchant.trim(),
+      merchant: AppTextUtils.trimToNull(merchant),
       note: buildCombinedNote(),
       source: FinanceEntrySource.import,
     );
@@ -599,10 +600,7 @@ class FinanceBillImportParser {
   }
 
   static int _sheetOrderNumber(String name) {
-    final m = RegExp(
-      r'sheet(\d+)\.xml$',
-      caseSensitive: false,
-    ).firstMatch(name);
+    final m = _rxCached5_1.firstMatch(name);
     return m != null ? (int.tryParse(m.group(1)!) ?? 999) : 999;
   }
 
@@ -834,18 +832,11 @@ class FinanceBillImportParser {
       ['交易时间', '金额', '交易对方', '商品说明', '交易类型', '交易单号', '支付方式', '收/支'],
     ];
 
-    final acctTypeMatch = RegExp(
-      r'<ACCTTYPE>\s*([^\r\n<]+)',
-      caseSensitive: false,
-    ).firstMatch(text);
-    final acctIdMatch = RegExp(
-      r'<ACCTID>\s*([^\r\n<]+)',
-      caseSensitive: false,
-    ).firstMatch(text);
+    final acctTypeMatch = _rxCached5_2.firstMatch(text);
+    final acctIdMatch = _rxCached5_3.firstMatch(text);
     var defaultAccount = '银行卡';
     final acctType = acctTypeMatch?.group(1)?.trim().toUpperCase() ?? '';
-    if (acctType == 'CREDITCARD' ||
-        RegExp(r'<CCSTMTRS>', caseSensitive: false).hasMatch(text)) {
+    if (acctType == 'CREDITCARD' || _rxCached5_4.hasMatch(text)) {
       defaultAccount = '信用卡';
     } else if (acctIdMatch != null) {
       final id = acctIdMatch.group(1)!.trim();
@@ -853,11 +844,7 @@ class FinanceBillImportParser {
       defaultAccount = '银行卡($tail)';
     }
 
-    final trnBlocks = RegExp(
-      r'<STMTTRN>(.*?)</STMTTRN>',
-      caseSensitive: false,
-      dotAll: true,
-    ).allMatches(text);
+    final trnBlocks = _rxCached5_5.allMatches(text);
 
     for (final match in trnBlocks) {
       final block = match.group(1) ?? '';
@@ -994,7 +981,7 @@ class FinanceBillImportParser {
   static Map<String, int>? _matchHeaderColumns(List<String> row) {
     final map = <String, int>{};
     for (var i = 0; i < row.length; i++) {
-      final raw = row[i].replaceAll(RegExp(r'\s+'), '');
+      final raw = row[i].replaceAll(_rxCached5_6, '');
       if (raw.isEmpty) continue;
       final lower = raw.toLowerCase();
 
@@ -1250,9 +1237,7 @@ class FinanceBillImportParser {
     }
 
     // 2. 紧凑数字格式（银行流水 / OFX 常见：20261110 或 20261110123000）
-    final ofxOrCompact = RegExp(
-      r'^(\d{4})(\d{2})(\d{2})(?:(\d{2})(\d{2})(\d{2})?)?',
-    ).firstMatch(value);
+    final ofxOrCompact = _rxCached5_7.firstMatch(value);
     if (ofxOrCompact != null &&
         !value.contains('-') &&
         !value.contains('/') &&
@@ -1269,9 +1254,7 @@ class FinanceBillImportParser {
     }
 
     // 3. 中文日期格式：2026年11月10日 12:30:00
-    final cnMatch = RegExp(
-      r'^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
-    ).firstMatch(value);
+    final cnMatch = _rxCached5_8.firstMatch(value);
     if (cnMatch != null) {
       return DateTime(
         int.parse(cnMatch.group(1)!),
@@ -1284,9 +1267,7 @@ class FinanceBillImportParser {
     }
 
     // 4. QIF / 美式日期：MM/DD/YYYY 或 MM/DD'YY
-    final usMatch = RegExp(
-      r"^(\d{1,2})/(\d{1,2})[/'](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$",
-    ).firstMatch(value);
+    final usMatch = _rxCached5_9.firstMatch(value);
     if (usMatch != null) {
       var year = int.parse(usMatch.group(3)!);
       if (year < 100) year += 2000;
@@ -1309,9 +1290,7 @@ class FinanceBillImportParser {
     final direct = DateTime.tryParse(normalized);
     if (direct != null) return direct.toLocal();
 
-    final match = RegExp(
-      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
-    ).firstMatch(normalized);
+    final match = _rxCached5_10.firstMatch(normalized);
     if (match == null) return null;
     final year = int.parse(match.group(1)!);
     final month = int.parse(match.group(2)!);
@@ -1381,10 +1360,7 @@ class FinanceBillImportParser {
     }
 
     cleaned = cleaned
-        .replaceAll(
-          RegExp(r'\b(CNY|RMB|USD|HKD|EUR|GBP|JPY)\b', caseSensitive: false),
-          '',
-        )
+        .replaceAll(_rxCached5_11, '')
         .replaceAll('¥', '')
         .replaceAll('￥', '')
         .replaceAll('\$', '')
@@ -1940,3 +1916,37 @@ class FinanceBillImportParser {
     return null;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached5_1 = RegExp(r'sheet(\d+)\.xml$', caseSensitive: false);
+final RegExp _rxCached5_2 = RegExp(
+  r'<ACCTTYPE>\s*([^\r\n<]+)',
+  caseSensitive: false,
+);
+final RegExp _rxCached5_3 = RegExp(
+  r'<ACCTID>\s*([^\r\n<]+)',
+  caseSensitive: false,
+);
+final RegExp _rxCached5_4 = RegExp(r'<CCSTMTRS>', caseSensitive: false);
+final RegExp _rxCached5_5 = RegExp(
+  r'<STMTTRN>(.*?)</STMTTRN>',
+  caseSensitive: false,
+  dotAll: true,
+);
+final RegExp _rxCached5_6 = RegExp(r'\s+');
+final RegExp _rxCached5_7 = RegExp(
+  r'^(\d{4})(\d{2})(\d{2})(?:(\d{2})(\d{2})(\d{2})?)?',
+);
+final RegExp _rxCached5_8 = RegExp(
+  r'^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
+);
+final RegExp _rxCached5_9 = RegExp(
+  r"^(\d{1,2})/(\d{1,2})[/'](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$",
+);
+final RegExp _rxCached5_10 = RegExp(
+  r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
+);
+final RegExp _rxCached5_11 = RegExp(
+  r'\b(CNY|RMB|USD|HKD|EUR|GBP|JPY)\b',
+  caseSensitive: false,
+);

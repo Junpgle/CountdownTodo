@@ -1,6 +1,8 @@
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../services/todo_recurrence_date_service.dart';
+import 'time_utils.dart';
+import 'calendar_date_math.dart';
 
 const int _pastOccurrenceLimit = 8;
 const int _futureOccurrenceLimit = 40;
@@ -89,7 +91,7 @@ _WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
   List<TodoItem> occurrences,
   DateTime now,
 ) {
-  final today = DateTime(now.year, now.month, now.day);
+  final today = CalendarDateMath.dateOnly(now);
   TodoItem? firstToday;
   TodoItem? firstUndoneToday;
   TodoItem? firstRule;
@@ -101,9 +103,7 @@ _WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
 
   for (final todo in occurrences) {
     final start = _startOf(todo);
-    if (start.year == today.year &&
-        start.month == today.month &&
-        start.day == today.day) {
+    if (AppTimeFormats.isSameDay(start, today)) {
       firstToday ??= todo;
       if (!todo.isDone) firstUndoneToday ??= todo;
     }
@@ -121,8 +121,7 @@ _WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
     if (start.isAfter(now)) continue;
     elapsedCount++;
     final effectiveEnd =
-        todo.dueDate?.toLocal() ??
-        DateTime(start.year, start.month, start.day + 1);
+        todo.dueDate?.toLocal() ?? AppTimeFormats.localDayStartOffset(start, 1);
     if (effectiveEnd.isBefore(now)) overdueCount++;
   }
 

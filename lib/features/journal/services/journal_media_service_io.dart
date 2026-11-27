@@ -14,6 +14,39 @@ class JournalMediaService {
 
   static final instance = JournalMediaService._();
   static const int _windowsMaxDecodeDimension = 2048;
+  static const int _maxFileExistsCacheEntries = 256;
+  final Map<String, bool> _fileExistsCache = <String, bool>{};
+
+  @visibleForTesting
+  void clearExistenceCache() => _fileExistsCache.clear();
+
+  bool _cachedFileExists(String path) {
+    final key = p.normalize(path);
+    final cached = _fileExistsCache.remove(key);
+    if (cached != null) {
+      _fileExistsCache[key] = cached;
+      return cached;
+    }
+    final exists = File(path).existsSync();
+    _cacheFileExists(key, exists);
+    return exists;
+  }
+
+  void _cacheFileExists(String path, bool exists) {
+    final key = p.normalize(path);
+    _fileExistsCache.remove(key);
+    if (_fileExistsCache.length >= _maxFileExistsCacheEntries) {
+      _fileExistsCache.remove(_fileExistsCache.keys.first);
+    }
+    _fileExistsCache[key] = exists;
+  }
+
+  void _invalidateFileExistsPrefix(String dirPath) {
+    final normalizedDir = p.normalize(dirPath);
+    _fileExistsCache.removeWhere(
+      (key, _) => key == normalizedDir || p.isWithin(normalizedDir, key),
+    );
+  }
 
   Future<JournalAttachment> importImage({
     required String accountId,
@@ -47,6 +80,7 @@ class JournalMediaService {
       '${attachment.id}_$sortOrder$extension',
     );
     await File(destination).writeAsBytes(bytes, flush: true);
+    _cacheFileExists(destination, true);
     return attachment.copyWith(localPath: destination);
   }
 
@@ -83,6 +117,7 @@ class JournalMediaService {
         final destinationFile = File(destination);
         copiedFiles.add(destinationFile);
         await File(sourcePath).copy(destination);
+        _cacheFileExists(destination, true);
         final persisted = attachment.copyWith(
           entryId: entryId,
           localPath: destination,
@@ -94,6 +129,7 @@ class JournalMediaService {
       for (final file in copiedFiles) {
         try {
           if (await file.exists()) await file.delete();
+          _fileExistsCache.remove(p.normalize(file.path));
         } catch (_) {}
       }
       try {
@@ -119,6 +155,7 @@ class JournalMediaService {
       p.join(_accountRoot(documents, accountId), '.drafts', draftId),
     );
     if (await draft.exists()) await draft.delete(recursive: true);
+    _invalidateFileExistsPrefix(draft.path);
   }
 
   /// Rebuilds attachments that were already copied into a draft before an
@@ -186,11 +223,13 @@ class JournalMediaService {
         .toSet();
     final drafts = Directory(p.join(root.path, '.drafts'));
     if (await drafts.exists()) await drafts.delete(recursive: true);
+    _invalidateFileExistsPrefix(drafts.path);
 
     final directories = <Directory>[];
     await for (final entity in root.list(recursive: true, followLinks: false)) {
       if (entity is File && !referenced.contains(p.normalize(entity.path))) {
         await entity.delete();
+        _fileExistsCache.remove(p.normalize(entity.path));
       } else if (entity is Directory) {
         directories.add(entity);
       }
@@ -212,7 +251,7 @@ class JournalMediaService {
   }) {
     final path = attachment.localPath;
     ImageProvider<Object>? baseProvider;
-    if (path != null && path.isNotEmpty && File(path).existsSync()) {
+    if (path != null && path.isNotEmpty && _cachedFileExists(path)) {
       baseProvider = FileImage(File(path));
     } else {
       final bytes = attachment.imageData;
@@ -238,6 +277,7 @@ class JournalMediaService {
     if (path == null || path.isEmpty) return;
     final file = File(path);
     if (await file.exists()) await file.delete();
+    _cacheFileExists(path, false);
     try {
       final parent = file.parent;
       if (await parent.exists() && parent.listSync().isEmpty) {
@@ -296,7 +336,7 @@ class JournalMediaService {
   }
 
   _DraftFileName? _parseDraftFileName(String name) {
-    final match = RegExp(r'^([0-9a-fA-F-]{36})_(\d+)\.').firstMatch(name);
+    final match = _rxCached11_1.firstMatch(name);
     if (match == null) return null;
     return _DraftFileName(
       id: match.group(1)!,
@@ -335,3 +375,6 @@ class _DraftFileName {
 
   const _DraftFileName({required this.id, required this.sortOrder});
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached11_1 = RegExp(r'^([0-9a-fA-F-]{36})_(\d+)\.');

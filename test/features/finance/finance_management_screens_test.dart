@@ -25,6 +25,7 @@ import 'package:countdown_todo/features/finance/widgets/finance_management_widge
 import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -234,7 +235,9 @@ Future<void> _pump(
   );
   await _waitFor(
     tester,
-    () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    () =>
+        find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty,
   );
 }
 
@@ -1972,7 +1975,8 @@ void main() {
       tester,
       () =>
           _key('finance-amount-field').evaluate().isNotEmpty &&
-          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+          find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.byType(AppSkeletonScope).evaluate().isEmpty,
     );
 
     final amountField = tester.widget<TextField>(
@@ -2031,7 +2035,8 @@ void main() {
       tester,
       () =>
           _key('finance-budget-amount').evaluate().isNotEmpty &&
-          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+          find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.byType(AppSkeletonScope).evaluate().isEmpty,
     );
 
     final amountField = tester.widget<TextField>(
@@ -2731,7 +2736,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-
   testWidgets('概览在选中月份开始时切换到实际统计', (tester) async {
     final db = await _seed(tester);
     var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
@@ -3155,8 +3159,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-
-
   testWidgets('退款超过支出时净支出图表仍显示负值', (tester) async {
     final refund = FinanceTransaction(
       uuid: 'overview-net-refund',
@@ -3402,7 +3404,6 @@ void main() {
     expect(find.text('2026年10月总预算'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-
 
   testWidgets('概览平均净支出不把收入笔数计入分母', (tester) async {
     final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
@@ -4763,7 +4764,8 @@ void main() {
       tester,
       () =>
           find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
-          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+          find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.byType(AppSkeletonScope).evaluate().isEmpty,
     );
     final rows = (await tester.runAsync(
       () => db.query(
@@ -5023,7 +5025,8 @@ void main() {
       tester,
       () =>
           find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
-          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+          find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.byType(AppSkeletonScope).evaluate().isEmpty,
     );
     expect(
       find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),

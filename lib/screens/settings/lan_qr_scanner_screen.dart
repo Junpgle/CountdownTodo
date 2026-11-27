@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../services/lan_sync_pairing.dart';
+import '../../utils/app_dialogs.dart';
 
 /// 局域网面对面同步二维码扫描页。
 class LanQrScannerScreen extends StatefulWidget {
@@ -37,7 +38,8 @@ class _LanQrScannerScreenState extends State<LanQrScannerScreen> {
     }
     if (!_invalidHintShown && mounted) {
       _invalidHintShown = true;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(
           content: Text('未识别到有效的局域网同步二维码'),
           duration: Duration(seconds: 2),
@@ -95,9 +97,8 @@ class _LanQrScannerScreenState extends State<LanQrScannerScreen> {
                       const SizedBox(height: 8),
                       Text(
                         '请检查相机权限，或返回使用“输入配对码”连接。',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: colorScheme.onSurfaceVariant),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),

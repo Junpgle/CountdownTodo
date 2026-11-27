@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import '../models.dart';
 import 'schedule_conflict_service.dart';
+import '../utils/text_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class FixedScheduleRescheduleDelta {
   const FixedScheduleRescheduleDelta({this.before, this.after});
@@ -283,11 +285,8 @@ class FixedScheduleRescheduleImpactService {
       final start = DateTime.fromMillisecondsSinceEpoch(schedule.startTime!)
           .toLocal();
       if (todo.isDateOnly) {
-        if (DateTime(
-          due.year,
-          due.month,
-          due.day,
-        ).isAfter(DateTime(start.year, start.month, start.day))) {
+        if (CalendarDateMath.dateOnly(due)
+            .isAfter(CalendarDateMath.dateOnly(start))) {
           return true;
         }
       } else if (due.isAfter(start)) {
@@ -375,10 +374,8 @@ class FixedScheduleRescheduleImpactService {
           .where((id) => id.isNotEmpty)
           .toSet();
 
-  static String? _normalizeTeamUuid(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
+  static String? _normalizeTeamUuid(String? value) =>
+      AppTextUtils.trimToNull(value);
 }
 
 DateTime? _localTime(int? milliseconds) => milliseconds == null

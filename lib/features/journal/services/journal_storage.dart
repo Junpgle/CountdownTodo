@@ -4,6 +4,8 @@ import 'package:sqflite/sqflite.dart';
 import '../../../services/database_helper.dart';
 import '../models/journal_entry.dart';
 import 'journal_media_service.dart';
+import '../../../utils/calendar_date_math.dart';
+import '../../../utils/time_utils.dart';
 
 class JournalStorage {
   JournalStorage._({
@@ -111,12 +113,8 @@ class JournalStorage {
       whereArgs.addAll(['%$escapedTerm%', '%$escapedTerm%']);
     }
     if (occurredOn != null) {
-      final start = DateTime(occurredOn.year, occurredOn.month, occurredOn.day);
-      final end = DateTime(
-        occurredOn.year,
-        occurredOn.month,
-        occurredOn.day + 1,
-      );
+      final start = CalendarDateMath.dateOnly(occurredOn);
+      final end = AppTimeFormats.localDayStartOffset(occurredOn, 1);
       where.add('occurred_at >= ? AND occurred_at < ?');
       whereArgs
         ..add(start.millisecondsSinceEpoch)

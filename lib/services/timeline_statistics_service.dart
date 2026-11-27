@@ -434,10 +434,9 @@ class TimelineStatisticsService {
   }
 
   static DateTime _todoStart(TodoItem todo) =>
-      DateTime.fromMillisecondsSinceEpoch(
+      AppTimeFormats.localFromServerTimestamp(
         todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
 
   static DateTime? _todoDueEnd(TodoItem todo) {
     final due = todo.dueDate?.toLocal();

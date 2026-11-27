@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../screens/course_screens.dart';
@@ -9,16 +8,7 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
-
-final Map<(String?, String), DateFormat> _planExecutionDateFormats = {};
-
-DateFormat _planExecutionDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planExecutionDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/calendar_date_math.dart';
 
 /// Presentation only: actual records keep their identity and never become
 /// draggable plans or change the plan's linked focus duration.
@@ -122,11 +112,10 @@ class PlanExecutionEntry {
     List<PomodoroRecord> records,
     List<TimeLogItem> logs,
   ) {
-    final start = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-    final end = DateTime(
-      day.year,
-      day.month,
-      day.day + 1,
+    final start = CalendarDateMath.dateOnly(day).millisecondsSinceEpoch;
+    final end = AppTimeFormats.localDayStartOffset(
+      day,
+      1,
     ).millisecondsSinceEpoch;
     return [
         ...records.where((r) => !r.isDeleted).map(PlanExecutionEntry.focus),
@@ -141,7 +130,7 @@ class PlanExecutionEntry {
     final format = DateUtils.isSameDay(startDate, endDate)
         ? 'HH:mm'
         : 'MM-dd HH:mm';
-    final dateFormat = _planExecutionDateFormat(format);
+    final dateFormat = AppTimeFormats.dateFormatter(format);
     return '${dateFormat.format(startDate)}–${dateFormat.format(endDate)}';
   }
 
@@ -187,7 +176,7 @@ class PlanExecutionSummary extends StatelessWidget {
     BuildContext context,
     List<PlanExecutionEntry> entries,
   ) async {
-    final dateFormat = _planExecutionDateFormat('M月d日');
+    final dateFormat = AppTimeFormats.dateFormatter('M月d日');
     ModalRoute<dynamic>? sheetRoute;
     final selected = await showAppModalBottomSheet<PlanExecutionEntry>(
       context: context,
@@ -388,16 +377,8 @@ class _PlanExecutionTimelineLayerState
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final day = DateTime(
-        widget.date.year,
-        widget.date.month,
-        widget.date.day,
-      );
-      final nextDay = DateTime(
-        widget.date.year,
-        widget.date.month,
-        widget.date.day + 1,
-      );
+      final day = CalendarDateMath.dateOnly(widget.date);
+      final nextDay = AppTimeFormats.localDayStartOffset(widget.date, 1);
       final hourlyLaneCounts = PlanExecutionEntry.hourlyTimelineLaneCounts(
         day,
         widget.entries,

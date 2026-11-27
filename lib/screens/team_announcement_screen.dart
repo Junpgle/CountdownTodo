@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
 import '../models.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/json_value_parser.dart';
 import '../widgets/app_sheet_widgets.dart';
+import '../widgets/app_skeleton.dart';
+import '../widgets/app_state_views.dart';
 import '../widgets/floating_glass_control.dart';
+import '../utils/time_utils.dart';
 
 class TeamAnnouncementScreen extends StatefulWidget {
   final Team team;
@@ -19,15 +21,6 @@ class TeamAnnouncementScreen extends StatefulWidget {
 class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   bool _isLoading = true;
   List<TeamAnnouncement> _announcements = [];
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -60,25 +53,15 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   Future<void> _deleteAnnouncement(String uuid) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认撤回'),
-        content: const Text('确定要撤回这条公告吗？撤回后所有成员将无法查看。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('确定撤回', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '确认撤回',
+      message: '确定要撤回这条公告吗？撤回后所有成员将无法查看。',
+      confirmLabel: '确定撤回',
+      destructive: true,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final res = await ApiService.deleteTeamAnnouncement(uuid);
     if (!mounted) return;
     if (res['success'] == true) {
@@ -388,7 +371,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                             member['read_at'],
                             fallback: DateTime.now().millisecondsSinceEpoch,
                           );
-                          final time = _cachedDateFormat(
+                          final time = AppTimeFormats.dateFormatter(
                             'MM-dd HH:mm',
                           ).format(DateTime.fromMillisecondsSinceEpoch(readAt));
                           return RepaintBoundary(
@@ -464,7 +447,11 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 4,
+                itemHeight: 108,
+              )
             : _announcements.isEmpty
             ? _buildEmptyState(isDark)
             : RefreshIndicator(
@@ -503,19 +490,12 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.campaign_outlined,
-            size: 64,
-            color: Colors.grey.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text('暂无团队公告', style: TextStyle(color: Colors.grey.shade500)),
-        ],
-      ),
+    return AppEmptyState(
+      icon: Icons.campaign_outlined,
+      iconSize: 64,
+      iconColor: Theme.of(context).colorScheme.onSurfaceVariant
+          .withValues(alpha: 0.35),
+      title: '暂无团队公告',
     );
   }
 
@@ -524,10 +504,10 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     bool isDark,
     bool isAdmin,
   ) {
-    final timeStr = _cachedDateFormat('yyyy-MM-dd HH:mm')
+    final timeStr = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(ann.createdAt));
     final expiryStr = ann.expiresAt != null
-        ? _cachedDateFormat('MM-dd HH:mm')
+        ? AppTimeFormats.dateFormatter('MM-dd HH:mm')
               .format(DateTime.fromMillisecondsSinceEpoch(ann.expiresAt!))
         : '永久';
 
@@ -535,214 +515,221 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       key: ValueKey<String>(ann.uuid),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: ann.isPriority
-            ? Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 2)
-            : null,
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          if (ann.isPriority)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  '重要',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: ann.isPriority
+              ? Border.all(
+                  color: Colors.orange.withValues(alpha: 0.5),
+                  width: 2,
+                )
+              : null,
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            if (ann.isPriority)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    '重要',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          Expanded(
-                            child: Text(
-                              ann.title,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                            Expanded(
+                              child: Text(
+                                ann.title,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!ann.isRead)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '未读',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    if (!ann.isRead)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          '未读',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.redAccent,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person_rounded,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      ann.creatorName ?? '管理员',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(
-                      Icons.access_time_rounded,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      timeStr,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    if (ann.expiresAt != null) ...[
-                      const SizedBox(width: 12),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
                       Icon(
-                        Icons.timer_off_outlined,
+                        Icons.person_rounded,
                         size: 14,
-                        color: Colors.orange.shade300,
+                        color: Colors.grey.shade500,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '到期: $expiryStr',
+                        ann.creatorName ?? '管理员',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.orange.shade300,
+                          color: Colors.grey.shade500,
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 14,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        timeStr,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      if (ann.expiresAt != null) ...[
+                        const SizedBox(width: 12),
+                        Icon(
+                          Icons.timer_off_outlined,
+                          size: 14,
+                          color: Colors.orange.shade300,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '到期: $expiryStr',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange.shade300,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Divider(height: 1),
-                ),
-                Text(
-                  ann.content,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    height: 1.5,
                   ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (isAdmin) ...[
-                  TextButton.icon(
-                    onPressed: () => _showAnnouncementStats(ann),
-                    icon: const Icon(Icons.bar_chart_rounded, size: 18),
-                    label: const Text('统计'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.secondary,
-                    ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(height: 1),
                   ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () => _deleteAnnouncement(ann.uuid),
-                    icon: const Icon(Icons.undo_rounded, size: 18),
-                    label: const Text('撤回'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
+                  Text(
+                    ann.content,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                      height: 1.5,
                     ),
                   ),
                 ],
-                const Spacer(),
-                if (!ann.isRead)
-                  ElevatedButton.icon(
-                    onPressed: () => _markAsRead(ann.uuid),
-                    icon: const Icon(Icons.check_circle_rounded, size: 18),
-                    label: const Text('确认已读'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.secondary
-                          .withValues(alpha: 0.1),
-                      foregroundColor: Theme.of(context).colorScheme.secondary,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (isAdmin) ...[
+                    TextButton.icon(
+                      onPressed: () => _showAnnouncementStats(ann),
+                      icon: const Icon(Icons.bar_chart_rounded, size: 18),
+                      label: const Text('统计'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context)
+                            .colorScheme
+                            .secondary,
                       ),
                     ),
-                  )
-                else
-                  TextButton.icon(
-                    onPressed: null,
-                    icon: const Icon(
-                      Icons.check_circle_rounded,
-                      size: 18,
-                      color: Colors.green,
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () => _deleteAnnouncement(ann.uuid),
+                      icon: const Icon(Icons.undo_rounded, size: 18),
+                      label: const Text('撤回'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                      ),
                     ),
-                    label: const Text(
-                      '已读',
-                      style: TextStyle(color: Colors.green),
+                  ],
+                  const Spacer(),
+                  if (!ann.isRead)
+                    ElevatedButton.icon(
+                      onPressed: () => _markAsRead(ann.uuid),
+                      icon: const Icon(Icons.check_circle_rounded, size: 18),
+                      label: const Text('确认已读'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.secondary
+                            .withValues(alpha: 0.1),
+                        foregroundColor: Theme.of(context)
+                            .colorScheme
+                            .secondary,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    )
+                  else
+                    TextButton.icon(
+                      onPressed: null,
+                      icon: const Icon(
+                        Icons.check_circle_rounded,
+                        size: 18,
+                        color: Colors.green,
+                      ),
+                      label: const Text(
+                        '已读',
+                        style: TextStyle(color: Colors.green),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 }

@@ -2,18 +2,18 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:intl/intl.dart';
 
 import '../../../models/data_export_models.dart';
 import '../../../services/api_service.dart';
 import '../../../services/data_import_service.dart';
 import '../../../services/minor_mode_policy.dart';
-import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/text_file_reader.dart';
-import '../../../widgets/floating_glass_control.dart';
+import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/app_dialogs.dart';
+import '../widgets/data_transfer_shared.dart';
 import '../widgets/import_scope_selector.dart';
 import '../widgets/import_restore_widgets.dart';
 
@@ -63,7 +63,7 @@ class _DataImportPageState extends State<DataImportPage> {
     try {
       final jsonString = await readTextFile(filePath);
       if (!mounted) return;
-      final fallbackName = filePath.split(RegExp(r'[/\\]')).last;
+      final fallbackName = filePath.split(_rxCached17_1).last;
       await _loadJsonString(
         filePath: filePath,
         fileName: widget.initialFileName ?? fallbackName,
@@ -212,25 +212,11 @@ class _DataImportPageState extends State<DataImportPage> {
       return;
     }
 
-    final authorized = await MinorModeService.instance.authorizeAction(
+    final authorized = await authorizeMinorModeDataTransfer(
+      context,
       MinorModeAction.dataImport,
     );
-    if (!authorized) {
-      if (mounted) {
-        AppSnackBars.showSnackBar(
-          context,
-          SnackBar(
-            content: Text(
-              MinorModeService.instance.authorizationFailureMessage(
-                MinorModeAction.dataImport,
-              ),
-            ),
-          ),
-        );
-      }
-      return;
-    }
-    if (!mounted) return;
+    if (!authorized || !mounted) return;
 
     final preview = _preview!;
     final selectedScopes = Set<ImportDataScope>.unmodifiable(_selectedScopes);
@@ -308,138 +294,110 @@ class _DataImportPageState extends State<DataImportPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final isLandscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    final isWideScreen = screenWidth > 600;
-    final standalone = !widget.isEmbedded && !isWideScreen;
-
-    return Scaffold(
-      extendBodyBehindAppBar: standalone,
-      appBar: widget.isEmbedded
-          ? null
-          : FloatingGlassAppBar(
-              flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('数据导入'),
-            ),
-      body: floatingGlassSettingsBody(
-        context,
-        standalone: standalone,
-        child: _buildBody(
-          colorScheme,
-          isLandscape || isWideScreen,
-          standalone: standalone,
+    final colorScheme = Theme.of(context).colorScheme;
+    final parsingOrPreview = <Widget>[
+      if (_isParsing)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: AppSkeletonSettingsSection(rows: 3, showHeader: false),
+        )
+      else if (_preview != null)
+        _buildPreviewSection(),
+    ];
+    final restoreActions = <Widget>[
+      if (!_isParsing && _preview != null) ...[
+        _buildImportOptionsCard(colorScheme),
+        const SizedBox(height: 16),
+        ImportRestoreRulesCard(
+          selectedScopes: _selectedScopes,
+          selectedTeamCount: _selectedTeamImportCount,
         ),
-      ),
-    );
-  }
+        const SizedBox(height: 24),
+        _buildImportButton(),
+      ],
+    ];
 
-  Widget _buildBody(
-    ColorScheme colorScheme,
-    bool isWide, {
-    required bool standalone,
-  }) {
-    if (isWide) {
-      return _buildWideLayout(colorScheme);
-    }
-    return _buildNarrowLayout(colorScheme, standalone: standalone);
-  }
-
-  Widget _buildNarrowLayout(
-    ColorScheme colorScheme, {
-    required bool standalone,
-  }) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        standalone ? floatingGlassSettingsContentTopInset(context) : 16,
-        16,
-        16,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildFileSection(colorScheme),
+    return DataTransferScaffold(
+      title: '数据导入',
+      isEmbedded: widget.isEmbedded,
+      primaryChildren: [
+        _buildFileSection(colorScheme),
+        const SizedBox(height: 16),
+        ...parsingOrPreview,
+        if (_result != null) ...[
           const SizedBox(height: 16),
-          if (_isParsing) ...[
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(),
-              ),
-            ),
-          ] else if (_preview != null) ...[
-            _buildPreviewSection(),
-            const SizedBox(height: 16),
-            _buildImportOptionsCard(colorScheme),
-            const SizedBox(height: 16),
-            ImportRestoreRulesCard(
-              selectedScopes: _selectedScopes,
-              selectedTeamCount: _selectedTeamImportCount,
-            ),
-            const SizedBox(height: 24),
-            _buildImportButton(),
-          ],
-          if (_result != null) ...[
-            const SizedBox(height: 16),
-            _buildResultCard(colorScheme),
-          ],
+          _buildResultCard(colorScheme),
         ],
-      ),
+      ],
+      secondaryChildren: restoreActions,
+      narrowChildren: [
+        _buildFileSection(colorScheme),
+        const SizedBox(height: 16),
+        ...parsingOrPreview,
+        if (restoreActions.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          ...restoreActions,
+        ],
+        if (_result != null) ...[
+          const SizedBox(height: 16),
+          _buildResultCard(colorScheme),
+        ],
+      ],
     );
   }
 
-  Widget _buildWideLayout(ColorScheme colorScheme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildFileSection(ColorScheme colorScheme) {
+    return DataTransferSectionCard(
+      icon: Icons.folder_open,
+      title: '选择备份文件',
+      titleFontSize: 16,
       children: [
-        Expanded(
-          flex: 3,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        if (_filePath != null || _fileContent != null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
               children: [
-                _buildFileSection(colorScheme),
-                const SizedBox(height: 16),
-                if (_isParsing) ...[
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: CircularProgressIndicator(),
-                    ),
+                Icon(
+                  Icons.description,
+                  color: colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _fileName ?? _filePath!.split('/').last,
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ] else if (_preview != null) ...[
-                  _buildPreviewSection(),
-                ],
-                if (_result != null) ...[
-                  const SizedBox(height: 16),
-                  _buildResultCard(colorScheme),
-                ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () {
+                    setState(() {
+                      _filePath = null;
+                      _fileName = null;
+                      _fileContent = null;
+                      _preview = null;
+                      _result = null;
+                    });
+                  },
+                ),
               ],
             ),
           ),
-        ),
-        Expanded(
-          flex: 2,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_preview != null) ...[
-                  _buildImportOptionsCard(colorScheme),
-                  const SizedBox(height: 16),
-                  ImportRestoreRulesCard(
-                    selectedScopes: _selectedScopes,
-                    selectedTeamCount: _selectedTeamImportCount,
-                  ),
-                  const SizedBox(height: 24),
-                  _buildImportButton(),
-                ],
-              ],
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isParsing ? null : _pickFile,
+            icon: const Icon(Icons.file_upload_outlined),
+            label: Text(
+              (_filePath == null && _fileContent == null) ? '选择文件' : '更换文件',
             ),
           ),
         ),
@@ -447,118 +405,31 @@ class _DataImportPageState extends State<DataImportPage> {
     );
   }
 
-  Widget _buildFileSection(ColorScheme colorScheme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.folder_open, color: colorScheme.primary, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  '选择备份文件',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_filePath != null || _fileContent != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.description,
-                      color: colorScheme.onSurfaceVariant,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _fileName ?? _filePath!.split('/').last,
-                        style: const TextStyle(fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () {
-                        setState(() {
-                          _filePath = null;
-                          _fileName = null;
-                          _fileContent = null;
-                          _preview = null;
-                          _result = null;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _isParsing ? null : _pickFile,
-                icon: const Icon(Icons.file_upload_outlined),
-                label: Text(
-                  (_filePath == null && _fileContent == null) ? '选择文件' : '更换文件',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildPreviewSection() {
     final preview = _preview!;
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.preview, color: colorScheme.primary, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  '文件预览',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              '导出时间',
-              DateFormat('yyyy-MM-dd HH:mm').format(preview.exportedAt),
-            ),
-            if (preview.appVersion != null)
-              _buildInfoRow('应用版本', preview.appVersion!),
-            const Divider(height: 24),
-            ImportScopeSelector(
-              preview: preview,
-              selectedScopes: _selectedScopes,
-              onSelectionChanged: (scopes) => setState(() {
-                _selectedScopes = scopes;
-                _result = null;
-              }),
-            ),
-          ],
+    return DataTransferSectionCard(
+      icon: Icons.preview,
+      title: '文件预览',
+      titleFontSize: 16,
+      children: [
+        _buildInfoRow(
+          '导出时间',
+          AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm')
+              .format(preview.exportedAt),
         ),
-      ),
+        if (preview.appVersion != null)
+          _buildInfoRow('应用版本', preview.appVersion!),
+        const Divider(height: 24),
+        ImportScopeSelector(
+          preview: preview,
+          selectedScopes: _selectedScopes,
+          onSelectionChanged: (scopes) => setState(() {
+            _selectedScopes = scopes;
+            _result = null;
+          }),
+        ),
+      ],
     );
   }
 
@@ -577,123 +448,89 @@ class _DataImportPageState extends State<DataImportPage> {
   Widget _buildImportOptionsCard(ColorScheme colorScheme) {
     final totalTeamCount = _selectedTeamImportCount;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.tune, color: colorScheme.primary, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  '导入选项',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-              ],
+    return DataTransferSectionCard(
+      icon: Icons.tune,
+      title: '导入选项',
+      headerSpacing: 0,
+      children: [
+        if (_isSameAccount != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _isSameAccount!
+                  ? colorScheme.primaryContainer
+                  : colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
             ),
-            if (_isSameAccount != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
+            child: Row(
+              children: [
+                Icon(
+                  _isSameAccount! ? Icons.check_circle : Icons.swap_horiz,
                   color: _isSameAccount!
-                      ? colorScheme.primaryContainer
-                      : colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(8),
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onErrorContainer,
+                  size: 18,
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _isSameAccount! ? Icons.check_circle : Icons.swap_horiz,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isSameAccount! ? '同账号数据，将保留原始 UUID' : '跨账号导入，将重新生成 UUID',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                       color: _isSameAccount!
                           ? colorScheme.onPrimaryContainer
                           : colorScheme.onErrorContainer,
-                      size: 18,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _isSameAccount!
-                            ? '同账号数据，将保留原始 UUID'
-                            : '跨账号导入，将重新生成 UUID',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _isSameAccount!
-                              ? colorScheme.onPrimaryContainer
-                              : colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
-            if (totalTeamCount > 0) ...[
-              const SizedBox(height: 16),
-              const Text(
-                '团队数据处理:',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              RadioGroup<TeamDataStrategy>(
-                groupValue: _teamStrategy,
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _teamStrategy = value);
-                  }
-                },
-                child: const Column(
-                  children: [
-                    RadioListTile<TeamDataStrategy>(
-                      title: Text('跳过'),
-                      subtitle: Text('不导入团队数据'),
-                      value: TeamDataStrategy.skip,
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                    ),
-                    RadioListTile<TeamDataStrategy>(
-                      title: Text('转为个人数据'),
-                      subtitle: Text('去除团队绑定，作为个人数据导入'),
-                      value: TeamDataStrategy.convertToPersonal,
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                    ),
-                  ],
+              ],
+            ),
+          ),
+        ],
+        if (totalTeamCount > 0) ...[
+          const SizedBox(height: 16),
+          const Text('团队数据处理:', style: TextStyle(fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          RadioGroup<TeamDataStrategy>(
+            groupValue: _teamStrategy,
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _teamStrategy = value);
+              }
+            },
+            child: const Column(
+              children: [
+                RadioListTile<TeamDataStrategy>(
+                  title: Text('跳过'),
+                  subtitle: Text('不导入团队数据'),
+                  value: TeamDataStrategy.skip,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
-              ),
-            ],
-          ],
-        ),
-      ),
+                RadioListTile<TeamDataStrategy>(
+                  title: Text('转为个人数据'),
+                  subtitle: Text('去除团队绑定，作为个人数据导入'),
+                  value: TeamDataStrategy.convertToPersonal,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
   Widget _buildImportButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: _isImporting || _selectedScopes.isEmpty ? null : _import,
-        icon: _isImporting
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.download),
-        label: Text(
-          _isImporting
-              ? '导入中...'
-              : _selectedScopes.isEmpty
-              ? '先选择恢复范围'
-              : '复核并导入',
-        ),
-      ),
+    return DataTransferPrimaryActionButton(
+      onPressed: _isImporting || _selectedScopes.isEmpty ? null : _import,
+      isBusy: _isImporting,
+      icon: Icons.download,
+      label: _selectedScopes.isEmpty ? '先选择恢复范围' : '复核并导入',
+      busyLabel: '导入中...',
     );
   }
 
@@ -769,3 +606,6 @@ class _DataImportPageState extends State<DataImportPage> {
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached17_1 = RegExp(r'[/\\]');

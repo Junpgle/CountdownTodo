@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../../../services/storage/user_session_storage.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -8,6 +9,7 @@ import '../repositories/habit_repository.dart';
 import 'habit_adaptation_service.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_sleep_goal_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 早睡 / 早起打卡配对后生成睡眠时长打卡。
 ///
@@ -28,7 +30,7 @@ abstract final class HabitSleepDurationService {
 
   /// 今日视图展示的睡眠日期：睡眠记录属于前一晚，而不是今天。
   static DateTime displayLogicalDateFor(HabitGoal goal, DateTime date) {
-    final day = DateTime(date.year, date.month, date.day);
+    final day = CalendarDateMath.dateOnly(date);
     return isSleepDurationGoal(goal)
         ? HabitRuleResolver.addCalendarDays(day, -1)
         : day;
@@ -165,7 +167,7 @@ abstract final class HabitSleepDurationService {
           HabitCheckIn(
             habitUuid: goal.uuid,
             ruleRevisionUuid: rule.uuid,
-            occurredAt: localBedtime.toUtc().millisecondsSinceEpoch,
+            occurredAt: AppTimeFormats.toServerTimestamp(localBedtime),
             logicalDate: logicalDate,
             timezoneOffsetMinutes: localBedtime.timeZoneOffset.inMinutes,
             value: seconds,
@@ -179,7 +181,7 @@ abstract final class HabitSleepDurationService {
         continue;
       }
 
-      final occurredAt = localBedtime.toUtc().millisecondsSinceEpoch;
+      final occurredAt = AppTimeFormats.toServerTimestamp(localBedtime);
       final timezoneOffsetMinutes = localBedtime.timeZoneOffset.inMinutes;
       // syncAll() runs whenever the today-habits card is refreshed.  Avoid
       // rewriting an identical generated record: updateCheckIn() increments
@@ -338,8 +340,7 @@ abstract final class HabitSleepDurationService {
     return HabitCheckIn.buildDedupeKey(goal.uuid, 'sleep-pair/$logicalDate')!;
   }
 
-  static String _formatTime(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  static String _formatTime(DateTime value) => AppTimeFormats.clock(value);
 
   static String _formatDuration(int minutes) {
     final hours = minutes ~/ 60;

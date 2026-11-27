@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import '../../../utils/json_value_parser.dart';
+import '../../../utils/text_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 class ChallengeDraft {
   final String title;
@@ -72,10 +74,8 @@ class ThirtyDayChallengeTask {
 
   static int? _parseInt(dynamic value) => JsonValueParser.toNullableInt(value);
 
-  static String? _parseNullableString(dynamic value) {
-    final text = value?.toString().trim();
-    return text == null || text.isEmpty ? null : text;
-  }
+  static String? _parseNullableString(dynamic value) =>
+      AppTextUtils.trimToNull(value?.toString());
 
   static DateTime? _parseDate(dynamic value) {
     final text = value?.toString();
@@ -168,15 +168,11 @@ class ThirtyDayChallengeState {
   }
 
   bool hasCompletedTaskOnDate(DateTime date) {
-    final targetDay = DateTime(date.year, date.month, date.day);
+    final targetDay = CalendarDateMath.dateOnly(date);
     for (final task in tasks) {
       if (!task.isCompleted || task.completedAt == null) continue;
       final completedLocal = task.completedAt!.toLocal();
-      final completedDay = DateTime(
-        completedLocal.year,
-        completedLocal.month,
-        completedLocal.day,
-      );
+      final completedDay = CalendarDateMath.dateOnly(completedLocal);
       if (completedDay == targetDay) return true;
     }
     return false;

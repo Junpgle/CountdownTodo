@@ -49,10 +49,7 @@ class _TodoRecurrenceDateStructure {
       final item = occurrences[index];
       final startEpoch = item.createdDate ?? item.createdAt;
       occurrenceStartEpochs.add(startEpoch);
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        startEpoch,
-        isUtc: true,
-      ).toLocal();
+      final start = AppTimeFormats.localFromServerTimestamp(startEpoch);
 
       if (previousStart != null && todo.recurrence != RecurrenceType.none) {
         var missingStart = TodoRecurrenceDateService.nextDate(
@@ -77,7 +74,7 @@ class _TodoRecurrenceDateStructure {
     final recurrenceEnd = todo.recurrenceEndDate;
     final recurrenceEndDay = recurrenceEnd == null
         ? null
-        : DateTime(recurrenceEnd.year, recurrenceEnd.month, recurrenceEnd.day);
+        : CalendarDateMath.dateOnly(recurrenceEnd);
 
     return _TodoRecurrenceDateStructure._(
       seriesId: seriesId,
@@ -132,11 +129,7 @@ class _TodoRecurrenceDateStructure {
       }
       _projectedStart = nextStart;
       final recurrenceEnd = recurrenceEndDayEpoch;
-      final projectedDay = DateTime(
-        nextStart.year,
-        nextStart.month,
-        nextStart.day,
-      );
+      final projectedDay = CalendarDateMath.dateOnly(nextStart);
       if (recurrenceEnd != null &&
           projectedDay.millisecondsSinceEpoch > recurrenceEnd) {
         _projectionExhausted = true;
@@ -150,19 +143,14 @@ class _TodoRecurrenceDateStructure {
   }
 
   static DateTime _startFor(TodoItem todo) =>
-      DateTime.fromMillisecondsSinceEpoch(
+      AppTimeFormats.localFromServerTimestamp(
         todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
 
   static int? _recurrenceEndDayEpoch(TodoItem todo) {
     final recurrenceEnd = todo.recurrenceEndDate;
     if (recurrenceEnd == null) return null;
-    return DateTime(
-      recurrenceEnd.year,
-      recurrenceEnd.month,
-      recurrenceEnd.day,
-    ).millisecondsSinceEpoch;
+    return CalendarDateMath.dateOnly(recurrenceEnd).millisecondsSinceEpoch;
   }
 }
 
@@ -307,19 +295,20 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
     if (todo.dueDate != null) {
       if (isDateOnly) {
-        return '${_cachedDateFormat('MM/dd').format(todo.dueDate!)}内完成';
+        return '${AppTimeFormats.dateFormatter('MM/dd').format(todo.dueDate!)}内完成';
       }
       if (todo.hasLegacyTimeRange) {
-        final dateTimeFormat = _cachedDateFormat('MM/dd HH:mm');
+        final dateTimeFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
         final startStr = dateTimeFormat.format(cDate);
         final dueStr = dateTimeFormat.format(todo.dueDate!);
         return '$startStr → $dueStr';
       }
-      final dueStr = _cachedDateFormat('MM/dd HH:mm').format(todo.dueDate!);
+      final dueStr = AppTimeFormats.dateFormatter('MM/dd HH:mm')
+          .format(todo.dueDate!);
       return '$dueStr前完成';
     } else {
       if (todo.hasLegacyTiming) {
-        return '开始 ${_cachedDateFormat('MM/dd HH:mm').format(cDate)}';
+        return '开始 ${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(cDate)}';
       }
       return '未安排';
     }
@@ -395,10 +384,9 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     var completedCount = 0;
     var overdueCount = 0;
     var skippedCount = 0;
-    final currentStart = DateTime.fromMillisecondsSinceEpoch(
+    final currentStart = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final occurrenceDuration =
         todo.dueDate?.difference(currentStart) ?? const Duration(hours: 24);
     for (var index = 0; index < dateStructure.slots.length; index++) {
@@ -536,7 +524,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       context,
       SnackBar(
         content: Text(
-          '${_cachedDateFormat('M月d日').format(node.date)}的待办实例尚未生成',
+          '${AppTimeFormats.dateFormatter('M月d日').format(node.date)}的待办实例尚未生成',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -561,7 +549,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                 color: colorScheme.primary,
               ),
               title: Text(
-                _cachedDateFormat('yyyy年M月d日').format(occurrenceDate),
+                AppTimeFormats.dateFormatter('yyyy年M月d日')
+                    .format(occurrenceDate),
               ),
               subtitle: Text(occurrence.title),
             ),
@@ -684,7 +673,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                   block.status == TodoPlanStatus.reminded),
         )
         .length;
-    final dateLabel = _cachedDateFormat('yyyy年M月d日').format(occurrenceDate);
+    final dateLabel = AppTimeFormats.dateFormatter('yyyy年M月d日')
+        .format(occurrenceDate);
     if (!mounted) return;
     final confirmed = await showAppDialog<bool>(
       context: context,
@@ -765,17 +755,17 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     final saved = await _saveSkippedOccurrence(latest, skipped: true);
     if (!saved) return;
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text('已跳过本期，后续期次仍会继续'),
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () => _restoreSkippedOccurrence(latest),
-          ),
+    AppSnackBars.hideCurrent(ScaffoldMessenger.of(context));
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: const Text('已跳过本期，后续期次仍会继续'),
+        action: SnackBarAction(
+          label: '撤销',
+          onPressed: () => _restoreSkippedOccurrence(latest),
         ),
-      );
+      ),
+    );
   }
 
   bool _runFocusesOccurrence(
@@ -983,37 +973,22 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                     title: const Text('在本期结束重复'),
                     subtitle: const Text('停止后续生成；本期之后已生成的关联期次移入回收站'),
                     onTap: () async {
-                      final accepted = await showAppDialog<bool>(
-                        context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          icon: Icon(
-                            Icons.stop_circle_outlined,
-                            color: Theme.of(dialogContext).colorScheme.error,
-                          ),
-                          title: const Text('在本期结束重复？'),
-                          content: const Text(
-                            '当前期和此前期次会保留，停止后续生成，并将本期之后已生成的期次移入回收站。',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () =>
-                                  Navigator.pop(dialogContext, false),
-                              child: const Text('返回'),
-                            ),
-                            FilledButton(
-                              onPressed: () =>
-                                  Navigator.pop(dialogContext, true),
-                              child: const Text('结束重复'),
-                            ),
-                          ],
+                      final accepted = await AppDialogs.confirm(
+                        context,
+                        icon: Icon(
+                          Icons.stop_circle_outlined,
+                          color: Theme.of(context).colorScheme.error,
                         ),
+                        title: '在本期结束重复？',
+                        message: '当前期和此前期次会保留，停止后续生成，并将本期之后已生成的期次移入回收站。',
+                        cancelLabel: '返回',
+                        confirmLabel: '结束重复',
                       );
-                      if (accepted != true || !sheetContext.mounted) return;
+                      if (!accepted || !sheetContext.mounted) return;
                       Navigator.pop(sheetContext);
-                      final start = DateTime.fromMillisecondsSinceEpoch(
+                      final start = AppTimeFormats.localFromServerTimestamp(
                         todo.createdDate ?? todo.createdAt,
-                        isUtc: true,
-                      ).toLocal();
+                      );
                       _invalidateTodoViewModel();
                       setState(() {
                         final currentStart = todo.createdDate ?? todo.createdAt;
@@ -1036,10 +1011,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                           }
                         }
                         todo.recurrence = RecurrenceType.none;
-                        todo.recurrenceEndDate = DateTime(
-                          start.year,
-                          start.month,
-                          start.day,
+                        todo.recurrenceEndDate = CalendarDateMath.dateOnly(
+                          start,
                         );
                         todo.markAsChanged();
                       });

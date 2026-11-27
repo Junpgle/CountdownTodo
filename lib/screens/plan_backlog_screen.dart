@@ -1,35 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../models/plan_availability.dart';
 import '../services/database_helper.dart';
 import '../services/plan_backlog_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/pomodoro_service.dart';
 import '../services/todo_editor_save_service.dart';
 import '../storage_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
 import 'plan_editor_drafts_screen.dart';
+import '../utils/app_dialogs.dart';
 import 'plan_cleanup_screen.dart';
-
-String? _planBacklogDateLocale;
-final _planBacklogDateFormatters = <String, DateFormat>{};
-
-DateFormat _planBacklogDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_planBacklogDateLocale != locale) {
-    _planBacklogDateLocale = locale;
-    _planBacklogDateFormatters.clear();
-  }
-  return _planBacklogDateFormatters.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
 
 class _PlanBacklogSectionHeader {
   const _PlanBacklogSectionHeader(this.group);
@@ -180,9 +167,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     }
   }
 
-  String _message(Object e) => e is StateError
-      ? e.message.toString()
-      : e.toString().replaceFirst('PlanAvailabilityException: ', '');
+  String _message(Object e) => formatPlanErrorMessage(e);
 
   bool _cannotPlanOnTargetDay(TodoItem todo) {
     if (todo.dueDate != null && todo.dueDate!.isBefore(_date)) return true;
@@ -192,7 +177,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
 
   Future<void> _pickDate() async {
     final today = DateUtils.dateOnly(_now);
-    final chosen = await showDatePicker(
+    final chosen = await showAppDatePicker(
       context: context,
       initialDate: _date.isBefore(today) ? today : _date,
       firstDate: today,
@@ -262,8 +247,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(e))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(e))),
+        );
       }
     } finally {
       _opening = false;
@@ -312,13 +299,17 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
         ),
       );
       if (mounted && saved) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('规划已保存，可在“已有安排”查看')));
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('规划已保存，可在“已有安排”查看')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(e))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(e))),
+        );
       }
     } finally {
       _opening = false;
@@ -352,8 +343,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(error))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(error))),
+        );
       }
     } finally {
       _opening = false;
@@ -362,8 +355,8 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
   }
 
   String _heading(int group) => switch (group) {
-    0 => '截止早于 ${_planBacklogDateFormat('M月d日').format(_date)}',
-    1 => '${_planBacklogDateFormat('M月d日').format(_date)} 到期',
+    0 => '截止早于 ${AppTimeFormats.format(_date, 'M月d日')}',
+    1 => '${AppTimeFormats.format(_date, 'M月d日')} 到期',
     2 => '之后到期',
     _ => '未设截止',
   };
@@ -388,12 +381,14 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       return row.paused ? '已暂停 · 查看当前专注' : '正在专注 · 查看当前专注';
     }
     if (row.legacy) {
-      final start = _planBacklogDateFormat('M/d HH:mm')
-          .format(row.todo.effectiveStartTime);
+      final start = AppTimeFormats.format(
+        row.todo.effectiveStartTime,
+        'M/d HH:mm',
+      );
       return '旧式时间安排 · $start';
     }
     if (row.planCount > 0) {
-      final dateTimeFormat = _planBacklogDateFormat('M/d HH:mm');
+      final dateTimeFormat = AppTimeFormats.dateFormatter('M/d HH:mm');
       final start = dateTimeFormat.format(
         DateTime.fromMillisecondsSinceEpoch(row.nextStart!),
       );
@@ -410,7 +405,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     if (due.isBefore(_date)) return '截止早于目标日期 · 请先查看待办';
     if (_cannotPlanOnTargetDay(row.todo)) return '已截止 · 请先查看待办';
     final duePattern = row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm';
-    final dueText = _planBacklogDateFormat(duePattern).format(due);
+    final dueText = AppTimeFormats.format(due, duePattern);
     return '$dueText 前完成';
   }
 
@@ -511,7 +506,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           OutlinedButton.icon(
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
-            label: Text('目标：${_planBacklogDateFormat('M月d日').format(_date)}'),
+            label: Text('目标：${AppTimeFormats.format(_date, 'M月d日')}'),
           ),
         ],
       ),
@@ -699,11 +694,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
                 return _row(row as PlanBacklogRow);
               }
               if (_loading) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(),
-                  ),
+                return const AppSkeletonListPage(
+                  shrinkWrap: true,
+                  itemCount: 5,
+                  itemHeight: 80,
                 );
               }
               return TextButton(

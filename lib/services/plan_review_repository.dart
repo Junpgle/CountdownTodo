@@ -1,12 +1,13 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../utils/calendar_date_math.dart';
+import '../utils/prefs_reload_coalescer.dart';
+import '../utils/time_utils.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
-import '../utils/calendar_date_math.dart';
 
 enum PlanReviewFilter {
   plans,
@@ -152,8 +153,7 @@ class PlanReviewRepository {
   }
 
   Future<Database> _database(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final pendingTodos =
         !(prefs.getBool('migration_marker_${username}_v4') ?? false) &&
         ((prefs.getStringList('user_todos_$username') ?? []).isNotEmpty ||
@@ -293,7 +293,7 @@ class PlanReviewRepository {
     final logs = aggregateValues('log', logColumns);
     final issueCount = aggregate['issue_n'];
     final boundary = plans['boundary'] as int?;
-    final midnight = DateTime(instant.year, instant.month, instant.day + 1);
+    final midnight = AppTimeFormats.localDayStartOffset(instant, 1);
     return PlanReviewOverview(
       identity: identity,
       start: sql.start,
@@ -331,8 +331,8 @@ class PlanReviewRepository {
     final identity = await PlanTodoIdentity.capture(username);
     final db = await _database(username);
     final instant = now;
-    final start = DateTime(instant.year, instant.month, instant.day);
-    final end = DateTime(start.year, start.month, start.day + 1);
+    final start = CalendarDateMath.dateOnly(instant);
+    final end = AppTimeFormats.localDayStartOffset(start, 1);
     final result = await db.transaction((tx) async {
       final sql = await _sql(tx, start, end, instant, schemaOwner: db);
       final overview = await _overview(tx, sql, identity, instant);
@@ -374,8 +374,8 @@ class PlanReviewRepository {
     final identity = await PlanTodoIdentity.capture(username);
     final db = await _database(username);
     final instant = now;
-    final start = DateTime(instant.year, instant.month, instant.day);
-    final end = DateTime(start.year, start.month, start.day + 1);
+    final start = CalendarDateMath.dateOnly(instant);
+    final end = AppTimeFormats.localDayStartOffset(start, 1);
     final result = await db.transaction((tx) async {
       final sql = await _sql(
         tx,
@@ -564,7 +564,7 @@ class PlanReviewRepository {
       );
       final selected = rows.take(50).map(PlanReviewEntry.new).toList();
       final last = selected.isEmpty ? null : selected.last;
-      final midnight = DateTime(instant.year, instant.month, instant.day + 1);
+      final midnight = AppTimeFormats.localDayStartOffset(instant, 1);
       final boundary = totals['boundary'] as int?;
       return PlanReviewPage(
         List.unmodifiable(selected),
@@ -809,10 +809,10 @@ class _ReviewSql {
     for (
       var d = start;
       d.isBefore(end);
-      d = DateTime(d.year, d.month, d.day + 1)
+      d = AppTimeFormats.localDayStartOffset(d, 1)
     ) {
       final a = d.millisecondsSinceEpoch,
-          b = DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch;
+          b = AppTimeFormats.localDayStartOffset(d, 1).millisecondsSinceEpoch;
       days.add('SELECT $a start, $b end');
     }
     return '''SELECT d.start,

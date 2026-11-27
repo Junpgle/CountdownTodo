@@ -401,11 +401,11 @@ class MacPomodoroStatusBarService {
     DateTime? now,
   }) {
     final localNow = (now ?? DateTime.now()).toLocal();
-    final today = DateTime(localNow.year, localNow.month, localNow.day);
+    final today = CalendarDateMath.dateOnly(localNow);
     final activeCountdowns = countdowns.where((countdown) {
       if (countdown.isDeleted || countdown.isCompleted) return false;
       final target = countdown.targetDate.toLocal();
-      final targetDay = DateTime(target.year, target.month, target.day);
+      final targetDay = CalendarDateMath.dateOnly(target);
       return !targetDay.isBefore(today);
     }).toList()..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
@@ -434,16 +434,14 @@ class MacPomodoroStatusBarService {
     final includeCurrentFocus =
         activePhase == PomodoroPhase.focusing.name &&
         activeStart != null &&
-        activeStart.year == localNow.year &&
-        activeStart.month == localNow.month &&
-        activeStart.day == localNow.day &&
+        AppTimeFormats.isSameDay(activeStart, localNow) &&
         !recordedSessionIds.contains(activeSessionId);
 
     final nearest = activeCountdowns.isEmpty ? null : activeCountdowns.first;
     final nearestTarget = nearest?.targetDate.toLocal();
     final nearestDay = nearestTarget == null
         ? null
-        : DateTime(nearestTarget.year, nearestTarget.month, nearestTarget.day);
+        : CalendarDateMath.dateOnly(nearestTarget);
     return <String, dynamic>{
       'todayFocusBaseSeconds': totalSeconds,
       'todayFocusBaseCount': records.length,

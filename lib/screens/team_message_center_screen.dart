@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
 import '../models.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
+import '../utils/json_value_parser.dart';
 
 class TeamMessageCenterScreen extends StatefulWidget {
   final List<Team> managedTeams;
@@ -33,15 +35,6 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   String? _loadError;
   bool _pendingOnly = false;
   final _searchController = TextEditingController();
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void dispose() {
@@ -218,7 +211,11 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 5,
+                itemHeight: 92,
+              )
             : RefreshIndicator(
                 onRefresh: _loadAllMessages,
                 child: ManagementPage.builder(
@@ -249,7 +246,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   Widget _buildMessageCard(dynamic msg) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final time = _cachedDateFormat('yyyy-MM-dd HH:mm')
+    final time = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(_asInt(msg['timestamp'])));
     final (icon, title) = switch (msg['type']) {
       'JOIN_REQUEST' => (Icons.person_add_outlined, '入队申请'),
@@ -426,9 +423,5 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     return '${msg['type'] ?? ''}:${msg['team_uuid'] ?? ''}:${msg['user_id'] ?? ''}:${_asInt(msg['timestamp'])}:${msg['message'] ?? ''}';
   }
 
-  int _asInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
+  int _asInt(dynamic value) => JsonValueParser.toInt(value);
 }

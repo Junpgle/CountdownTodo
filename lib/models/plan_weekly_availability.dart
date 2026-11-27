@@ -1,12 +1,13 @@
 import 'dart:convert';
 
+import '../utils/time_utils.dart';
+
 /// Wall-clock minutes. Midnight at the end of a day is represented by 1440.
 class PlanWeeklyWindow {
   const PlanWeeklyWindow(this.start, this.end);
   final int start, end;
   String get label => '${time(start)}–${time(end)}';
-  static String time(int minute) =>
-      '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+  static String time(int minute) => AppTimeFormats.minuteOfDay(minute);
 }
 
 class PlanWeeklyRules {
@@ -24,7 +25,7 @@ class PlanWeeklyRules {
   );
   final bool enabled;
   final List<List<PlanWeeklyWindow>> days;
-  static const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  static const weekdays = AppTimeFormats.weekdayLabelsZh;
   static List<PlanWeeklyWindow> _normalize(List<PlanWeeklyWindow> input) {
     if (input.length > 4 ||
         input.any((w) => w.start < 0 || w.end > 1440 || w.start >= w.end)) {
@@ -120,9 +121,7 @@ class PlanWeeklyRules {
     final matches = <DateTime>[];
     for (final offset in offsets) {
       final candidate = wall.subtract(Duration(minutes: offset)).toLocal();
-      if (candidate.year == wall.year &&
-          candidate.month == wall.month &&
-          candidate.day == wall.day &&
+      if (AppTimeFormats.isSameDay(candidate, wall) &&
           candidate.hour == wall.hour &&
           candidate.minute == wall.minute) {
         matches.add(candidate);

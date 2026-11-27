@@ -1,3 +1,4 @@
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,7 @@ import 'settings/pages/ai_assistant_settings_page.dart';
 import 'settings/pages/account_devices_page.dart';
 import 'settings/llm_config_page.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -57,7 +59,8 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with SettingsNavigationMixin<SettingsPage> {
   String _username = "加载中...";
   int? _userId;
   String _userTier = "加载中...";
@@ -74,8 +77,6 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget Function()? _selectedRightPaneBuilder;
   Widget Function()? _initialTargetRootBuilder;
 
-  final Map<String, GlobalKey> _navigationKeys = {};
-
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _updateSettingsSectionKey = GlobalKey();
   GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
@@ -90,24 +91,6 @@ class _SettingsPageState extends State<SettingsPage> {
   List<SearchResult> _settingsSearchResults = const [];
   final TextEditingController _settingsSearchController =
       TextEditingController();
-
-  GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
-    id,
-    () => GlobalKey(debugLabel: 'settings-$id'),
-  );
-
-  Future<T?> _openSettingsPage<T>(
-    String id,
-    Widget page, {
-    RouteSettings? settings,
-    bool rootNavigator = false,
-  }) => SettingsNavigation.push<T>(
-    context: context,
-    page: page,
-    sourceKey: _navigationKey(id),
-    rootNavigator: rootNavigator,
-    settings: settings,
-  );
 
   void _onSettingsSearchChanged(String query) {
     final normalizedQuery = query.trim();
@@ -201,7 +184,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildSettingsSearchResultTile(SearchResult result) {
     final colorScheme = Theme.of(context).colorScheme;
-    final routeKey = _navigationKey('search_${result.id}');
+    final routeKey = settingsNavigationKey('search_${result.id}');
     return ListTile(
       key: routeKey,
       leading: Icon(result.icon, color: colorScheme.primary),
@@ -538,7 +521,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (widget.openInitialTargetAsRoot) {
         setState(() => _initialTargetRootBuilder = () => pushWidget);
       } else {
-        _openSettingsPage(paneId, pushWidget);
+        openSettingsPage(paneId, pushWidget);
       }
     }
   }
@@ -611,10 +594,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
-      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(
+      final DateTime lastSync = AppTimeFormats.localFromServerTimestamp(
         lastSyncTime,
-        isUtc: true,
-      ).toLocal();
+      );
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -890,26 +872,13 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    final confirm = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('强制全量同步'),
-        content: const Text(
-          '这将重置本地同步记录，从云端拉取所有最新数据。\n\n本地未同步的数据会先上传，再合并云端数据。\n\n是否继续？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+    final confirm = await AppDialogs.confirm(
+      context,
+      title: '强制全量同步',
+      message: '这将重置本地同步记录，从云端拉取所有最新数据。\n\n本地未同步的数据会先上传，再合并云端数据。\n\n是否继续？',
+      confirmLabel: '确认',
     );
-    if (confirm != true) return;
+    if (!confirm) return;
 
     if (!mounted) return;
     AppSnackBars.showSnackBar(
@@ -954,28 +923,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _handleLogout({bool force = false}) async {
     bool confirm = force;
     if (!force) {
-      confirm =
-          await showAppDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text("退出账号"),
-              content: const Text("确定要退出当前账号吗？"),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text("取消"),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                  ),
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text("退出"),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      confirm = await AppDialogs.confirm(
+        context,
+        title: '退出账号',
+        message: '确定要退出当前账号吗？',
+        confirmLabel: '退出',
+        destructive: true,
+      );
     }
 
     if (confirm) {
@@ -1052,7 +1006,7 @@ class _SettingsPageState extends State<SettingsPage> {
       SettingsNavigation.push<void>(
         context: targetContext,
         page: const AccountDevicesPage(),
-        sourceKey: _navigationKey('account_devices'),
+        sourceKey: settingsNavigationKey('account_devices'),
         settings: const RouteSettings(name: '登录设备管理'),
         placeholderIcon: Icons.devices_rounded,
       );
@@ -1197,7 +1151,12 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
       child: _isInitialLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppSkeletonSettingsPage(
+              sectionCount: 3,
+              rowsPerSection: 3,
+              masterDetailOnWide: true,
+              masterDetailBreakpoint: 800,
+            )
           : LayoutBuilder(
               builder: (context, constraints) {
                 if (constraints.maxWidth < 150) {
@@ -1685,7 +1644,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onForceFullSync: _forceFullSync,
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
-            manageDevicesKey: _navigationKey('account_devices'),
+            manageDevicesKey: settingsNavigationKey('account_devices'),
             onManageDevices: () => _openAccountDevicesPage(isEmbedded: false),
           ),
           UpdateSettingsSection(key: _updateSettingsSectionKey),
@@ -1713,19 +1672,19 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               children: [
                 ListTile(
-                  key: _navigationKey('minor_mode'),
+                  key: settingsNavigationKey('minor_mode'),
                   leading: const Icon(Icons.shield_outlined),
                   title: const Text('未成年人模式'),
                   subtitle: const Text('守护未成年人身心健康'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'minor_mode',
                     const MinorModeSettingsPage(),
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('preference'),
+                  key: settingsNavigationKey('preference'),
                   leading: const Icon(
                     Icons.palette_outlined,
                     color: Colors.indigo,
@@ -1733,14 +1692,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('系统与外观'),
                   subtitle: const Text('主题、动画、存储清理、数据迁移与高级选项'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'preference',
                     const PreferenceSettingsPage(),
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('animation'),
+                  key: settingsNavigationKey('animation'),
                   leading: const Icon(
                     Icons.animation_outlined,
                     color: Colors.pinkAccent,
@@ -1748,14 +1707,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('动画与特效'),
                   subtitle: const Text('页面切换动画、过渡效果及性能选项'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'animation',
                     const AnimationSettingsPage(),
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('course'),
+                  key: settingsNavigationKey('course'),
                   leading: const Icon(
                     Icons.school_outlined,
                     color: Colors.teal,
@@ -1764,11 +1723,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: const Text('教务导入、上课时间、学期进度条等'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () =>
-                      _openSettingsPage('course', const CourseSettingsPage()),
+                      openSettingsPage('course', const CourseSettingsPage()),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('interconnect'),
+                  key: settingsNavigationKey('interconnect'),
                   leading: const Icon(
                     Icons.devices_outlined,
                     color: Colors.blue,
@@ -1782,14 +1741,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         : '局域网同步、MCP 与数据备份迁移',
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'interconnect',
                     InterconnectSettingsPage(username: _username),
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('llm_config'),
+                  key: settingsNavigationKey('llm_config'),
                   leading: const Icon(
                     Icons.psychology_outlined,
                     color: Colors.deepPurple,
@@ -1798,11 +1757,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: const Text('服务商、密钥、对话模型与多模态模型'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () =>
-                      _openSettingsPage('llm_config', const LLMConfigPage()),
+                      openSettingsPage('llm_config', const LLMConfigPage()),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('ai_assistant'),
+                  key: settingsNavigationKey('ai_assistant'),
                   leading: Icon(
                     Icons.auto_awesome_rounded,
                     color: Theme.of(context).colorScheme.tertiary,
@@ -1810,7 +1769,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('AI 助手设置'),
                   subtitle: const Text('工具查询、智能注入、提示词与深度思考'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'ai_assistant',
                     const AiAssistantSettingsPage(),
                   ),
@@ -1827,7 +1786,7 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 if (!AppPlatform.isWeb) ...[
                   ListTile(
-                    key: _navigationKey('platform'),
+                    key: settingsNavigationKey('platform'),
                     leading: const Icon(
                       Icons.stars_rounded,
                       color: Colors.deepPurple,
@@ -1841,7 +1800,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等',
                     ),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSettingsPage(
+                    onTap: () => openSettingsPage(
                       'platform',
                       const PlatformSpecificSettingsPage(),
                     ),
@@ -1849,7 +1808,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Divider(height: 1, indent: 56),
                 ],
                 ListTile(
-                  key: _navigationKey('notifications'),
+                  key: settingsNavigationKey('notifications'),
                   leading: const Icon(
                     Icons.notifications_outlined,
                     color: Colors.amber,
@@ -1859,7 +1818,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     AppPlatform.isWeb ? '权限授权、番茄钟结束、待办和课程提醒' : '实时活动、定时闹钟与通知偏好',
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'notifications',
                     const NotificationSettingsPage(),
                   ),
@@ -1867,14 +1826,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1, indent: 56),
                 if (!AppPlatform.isWeb) ...[
                   ListTile(
-                    key: _navigationKey('permissions'),
+                    key: settingsNavigationKey('permissions'),
                     leading: const Icon(
                       Icons.security_outlined,
                       color: Colors.red,
                     ),
                     title: const Text('权限管理'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSettingsPage(
+                    onTap: () => openSettingsPage(
                       'permissions',
                       const PermissionSettingsPage(),
                     ),
@@ -1882,7 +1841,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Divider(height: 1, indent: 56),
                 ],
                 ListTile(
-                  key: _navigationKey('help'),
+                  key: settingsNavigationKey('help'),
                   leading: const Icon(
                     Icons.help_outline,
                     color: Colors.blueGrey,
@@ -1890,18 +1849,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('帮助与反馈'),
                   subtitle: const Text('使用指南、快速上手、常见问题'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
+                  onTap: () => openSettingsPage(
                     'help',
                     HelpCenterScreen(username: _username),
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  key: _navigationKey('about'),
+                  key: settingsNavigationKey('about'),
                   leading: const Icon(Icons.info_outline, color: Colors.grey),
                   title: const Text('关于此应用'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage('about', const AboutScreen()),
+                  onTap: () => openSettingsPage('about', const AboutScreen()),
                 ),
               ],
             ),

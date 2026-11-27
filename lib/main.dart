@@ -50,12 +50,14 @@ import 'services/app_deep_link_service.dart';
 import 'services/platform_bootstrap.dart';
 import 'services/minor_mode_service.dart';
 import 'services/session_revocation_service.dart';
+import 'features/habits/services/habit_celebration_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
 import 'utils/app_image_filters.dart';
 import 'widgets/liquid_glass_live_preview_dock.dart';
 import 'widgets/animation_performance_floating_window.dart';
+import 'widgets/optional_liquid_glass_backdrop.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
 import 'theme/oled_surface_color_scheme.dart';
 import 'widgets/island_debug_host.dart';
@@ -291,6 +293,7 @@ Future<void> main(List<String> args) async {
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
+  unawaited(HabitCelebrationService.ensureInitialized());
 
   // Register island entry as a tear-off so the desktop_multi_window plugin
   // can start a new Dart isolate using this symbol name. The plugin expects
@@ -559,30 +562,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     try {
       // debugPrint('[Main] Attempting to show Flutter dialog...');
       final result =
-          await showAppDialog<bool>(
-            context: context,
+          await AppDialogs.confirm(
+            context,
+            title: '关闭确认',
+            message: '选择操作：',
+            cancelLabel: '最小化到托盘',
+            confirmLabel: '退出程序',
+            destructive: true,
             barrierDismissible: false,
-            builder: (dialogContext) => AlertDialog(
-              title: const Text('关闭确认'),
-              content: const Text('选择操作：'),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    // debugPrint('[Main] User chose: minimize');
-                    Navigator.of(dialogContext).pop(false);
-                  },
-                  child: const Text('最小化到托盘'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // debugPrint('[Main] User chose: exit');
-                    Navigator.of(dialogContext).pop(true);
-                  },
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('退出程序'),
-                ),
-              ],
-            ),
           ).timeout(
             const Duration(seconds: 3),
             onTimeout: () {
@@ -591,7 +578,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             },
           );
       // debugPrint('[Main] Dialog result: $result');
-      return result ?? false;
+      return result;
     } catch (e) {
       // debugPrint('[Main] Dialog error (will use native fallback): $e');
       rethrow; // 抛出异常让 WindowService 使用原生对话框
@@ -1361,7 +1348,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                             .brightness,
                                                     child: Stack(
                                                       children: [
-                                                        adaptedContent,
+                                                        OptionalLiquidGlassBackdropScope(
+                                                          isSolidBackground:
+                                                              true,
+                                                          child: adaptedContent,
+                                                        ),
                                                         const Positioned(
                                                           left: 0,
                                                           right: 0,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/app_dialogs.dart';
 import '../utils/countdown_todo_tutorial_links.dart';
 import 'optional_liquid_glass_surface.dart';
 
@@ -62,12 +63,16 @@ class AdvancedAiTutorialCard extends StatelessWidget {
         mode: LaunchMode.externalApplication,
       );
       if (launched || !context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('无法打开教程链接，请稍后重试。')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('无法打开教程链接，请稍后重试。')),
+      );
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('打开教程失败，请检查网络后重试。')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('打开教程失败，请检查网络后重试。')),
+      );
     }
   }
 }

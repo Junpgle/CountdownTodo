@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../models/chat_message.dart';
+import '../utils/time_utils.dart';
 
 /// Shows the exact function, submitted arguments, and actual app response.
 class AiToolCallTile extends StatefulWidget {
@@ -10,14 +11,31 @@ class AiToolCallTile extends StatefulWidget {
 
   final ChatNativeToolCall call;
 
+  static const int _maxDecodedArgsCacheEntries = 64;
+  static final Map<String, Map<String, dynamic>> _decodedArgsCache =
+      <String, Map<String, dynamic>>{};
+
   static Map<String, dynamic> _decodeArgs(String raw) {
     if (raw.trim().isEmpty) return const <String, dynamic>{};
+    final cached = _decodedArgsCache.remove(raw);
+    if (cached != null) {
+      _decodedArgsCache[raw] = cached;
+      return cached;
+    }
+    Map<String, dynamic> parsed;
     try {
       final value = jsonDecode(raw);
-      return value is Map ? Map<String, dynamic>.from(value) : const {};
+      parsed = value is Map
+          ? Map<String, dynamic>.unmodifiable(Map<String, dynamic>.from(value))
+          : const <String, dynamic>{};
     } catch (_) {
       return const <String, dynamic>{};
     }
+    if (_decodedArgsCache.length >= _maxDecodedArgsCacheEntries) {
+      _decodedArgsCache.remove(_decodedArgsCache.keys.first);
+    }
+    _decodedArgsCache[raw] = parsed;
+    return parsed;
   }
 
   static String _queryTargetFor(String name, Map<String, dynamic> args) {
@@ -189,7 +207,7 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
     if (from == null || exclusive == null || !exclusive.isAfter(from)) {
       return '';
     }
-    final last = DateTime(exclusive.year, exclusive.month, exclusive.day - 1);
+    final last = AppTimeFormats.localDayStartOffset(exclusive, -1);
     final includeYear =
         from.year != last.year || from.year != DateTime.now().year;
     String label(DateTime date) =>

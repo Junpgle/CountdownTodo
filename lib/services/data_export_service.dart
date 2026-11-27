@@ -518,7 +518,7 @@ class DataExportService {
 
   static String _buildExportFileName() {
     final now = DateTime.now();
-    return 'cdt_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.json';
+    return 'cdt_backup_${AppTimeFormats.fileTimestamp(now)}.json';
   }
 
   static Future<Map<String, dynamic>> _exportSettings(String username) async {
@@ -610,7 +610,7 @@ class DataExportService {
           continue;
         }
         // 跳过其他用户的数据
-        if (RegExp(r'_\w+$').hasMatch(key) && !key.endsWith(userSuffix)) {
+        if (_rxCached27_1.hasMatch(key) && !key.endsWith(userSuffix)) {
           continue;
         }
       }
@@ -625,3 +625,6 @@ class DataExportService {
     return settings;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached27_1 = RegExp(r'_\w+$');

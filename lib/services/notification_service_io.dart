@@ -4,7 +4,6 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:intl/intl.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -15,19 +14,23 @@ import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
-import 'plan_reminder_guard.dart';
+import 'countdown_reminder_helper.dart';
+import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/json_value_parser.dart';
+import '../utils/text_utils.dart';
 
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
   static const int financeBudgetAlertNotificationRange = 9000;
-  static const int countdownLiveNotificationBaseId = 71001;
-  static const int countdownLiveNotificationRange = 999;
+  static const int countdownLiveNotificationBaseId =
+      CountdownReminderHelper.liveNotificationBaseId;
+  static const int countdownLiveNotificationRange =
+      CountdownReminderHelper.liveNotificationRange;
 
   static int countdownLiveNotifId(String countdownId) =>
-      countdownLiveNotificationBaseId +
-      (countdownId.hashCode.abs() % countdownLiveNotificationRange);
+      CountdownReminderHelper.liveNotificationId(countdownId);
 
   static const MethodChannel _channel = MethodChannel(
     'com.math_quiz.junpgle.com.math_quiz_app/notifications',
@@ -105,15 +108,6 @@ class NotificationService {
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsTodoNotificationKeys = <String>{};
-  static final Map<(String?, String), DateFormat>
-  _todoNotificationDateFormatters = {};
-
-  static DateFormat _todoNotificationDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _todoNotificationDateFormatters.putIfAbsent((locale, pattern), () {
-      return DateFormat(pattern, locale);
-    });
-  }
 
   static const NotificationDetails _desktopNotificationDetails =
       NotificationDetails(
@@ -204,6 +198,18 @@ class NotificationService {
     if (notifId == null) return;
 
     await cancelReminder(notifId);
+    if (event.type == MacIslandReminderActionType.acknowledged &&
+        event.reminder['type'] == 'countdown') {
+      final countdownId = event.reminder['countdownId']?.toString().trim();
+      final dateStr =
+          event.reminder['countdownDateStr']?.toString().trim() ?? '';
+      if (countdownId != null && countdownId.isNotEmpty) {
+        await CountdownReminderPrefs.markDismissed(
+          countdownId,
+          dateStr.isNotEmpty ? dateStr : AppTimeFormats.date(DateTime.now()),
+        );
+      }
+    }
     if (event.type == MacIslandReminderActionType.snoozed) {
       final snoozed = Map<String, dynamic>.from(event.reminder)
         ..['triggerAtMs'] = DateTime.now()
@@ -435,10 +441,9 @@ class NotificationService {
       if (!AppTimeFormats.isSameDay(localDueDate, now)) continue;
       final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
       if (todoType != 'default') continue;
-      final startDate = DateTime.fromMillisecondsSinceEpoch(
+      final startDate = AppTimeFormats.localFromServerTimestamp(
         todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
       if (startDate.hour != 0 ||
           startDate.minute != 0 ||
           localDueDate.hour != 23 ||
@@ -495,7 +500,7 @@ class NotificationService {
     required bool isSpecialTodo,
   }) {
     if (isSpecialTodo) return '${todo.id}@pickup-v${todo.version}';
-    final dayStr = _todoNotificationDateFormat('yyyy-MM-dd')
+    final dayStr = AppTimeFormats.dateFormatter('yyyy-MM-dd')
         .format(todo.dueDate!.toLocal());
     return '${todo.id}@$dayStr';
   }
@@ -558,7 +563,7 @@ class NotificationService {
     } else if (isAllDayTodo) {
       timeStr = '当天内完成';
     } else {
-      timeStr = '${_todoNotificationDateFormat('HH:mm').format(dueDate!)}前完成';
+      timeStr = '${AppTimeFormats.dateFormatter('HH:mm').format(dueDate!)}前完成';
     }
     final notifId = todo.id.hashCode;
 
@@ -568,7 +573,7 @@ class NotificationService {
     if (_isDesktopSupported) {
       if (isAllDayTodo) {
         final todaySuffix =
-            '@${_todoNotificationDateFormat('yyyy-MM-dd').format(DateTime.now())}';
+            '@${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(DateTime.now())}';
         _windowsTodoNotificationKeys.removeWhere(
           (key) => !key.contains('@pickup-v') && !key.endsWith(todaySuffix),
         );
@@ -626,7 +631,10 @@ class NotificationService {
   }
 
   /// 倒数日当天 08:00 起触发实时活动通知（Android 静态图标 / macOS 灵动岛动画图标 / Windows 桌面通知）。
-  static Future<bool> showCountdownLiveActivity(CountdownItem countdown) async {
+  static Future<bool> showCountdownLiveActivity(
+    CountdownItem countdown, {
+    DateTime? now,
+  }) async {
     if (FocusDoNotDisturbService.isActive) return false;
     if (countdown.isDeleted || countdown.isCompleted) return false;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
@@ -639,13 +647,13 @@ class NotificationService {
       return false;
     }
 
-    final now = DateTime.now();
+    final current = now ?? DateTime.now();
     final targetLocal = countdown.targetDate.toLocal();
-    if (!AppTimeFormats.isSameDay(targetLocal, now)) {
+    if (!AppTimeFormats.isSameDay(targetLocal, current)) {
       return false;
     }
-    final eightAm = DateTime(now.year, now.month, now.day, 8, 0);
-    if (now.isBefore(eightAm)) {
+    final eightAm = DateTime(current.year, current.month, current.day, 8, 0);
+    if (current.isBefore(eightAm)) {
       return false;
     }
 
@@ -654,8 +662,10 @@ class NotificationService {
     );
     final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
     final label = ItemSemanticsService.countdownCategoryLabel(category);
-    final dateStr =
-        '${targetLocal.year}-${targetLocal.month.toString().padLeft(2, '0')}-${targetLocal.day.toString().padLeft(2, '0')}';
+    final dateStr = AppTimeFormats.date(targetLocal);
+    if (await CountdownReminderPrefs.isDismissed(countdown.id, dateStr)) {
+      return false;
+    }
     final notifId = countdownLiveNotifId(countdown.id);
 
     if (_isDesktopSupported) {
@@ -670,17 +680,24 @@ class NotificationService {
         );
       }
       if (Platform.isMacOS) {
-        final endOfDay = DateTime(now.year, now.month, now.day, 23, 59);
+        final endOfDay = DateTime(
+          current.year,
+          current.month,
+          current.day,
+          23,
+          59,
+        );
         await MacPomodoroStatusBarService.showIslandReminder({
           'notifId': notifId,
-          'triggerAtMs': now.millisecondsSinceEpoch,
-          'startAtMs': endOfDay.toUtc().millisecondsSinceEpoch,
+          'triggerAtMs': current.millisecondsSinceEpoch,
+          'startAtMs': AppTimeFormats.toServerTimestamp(endOfDay),
           'title': '$emoji ${countdown.title}',
           'text': '$label就在今天 · $dateStr',
           'type': 'countdown',
           'countdownCategory': category,
           'countdownId': countdown.id,
           'countdownTitle': countdown.title,
+          'countdownDateStr': dateStr,
           'timeStr': '就在今天',
         });
       }
@@ -688,16 +705,23 @@ class NotificationService {
     }
 
     try {
-      await _channel.invokeMethod('showOngoingNotification', {
-        'type': 'countdown',
-        'countdownTitle': countdown.title,
-        'countdownCategory': category,
-        'countdownDateStr': dateStr,
-        'countdownId': countdown.id,
-        'timeStr': '就在今天',
-        'notificationId': notifId,
-      });
-      return true;
+      final shown = await _channel.invokeMethod<bool>(
+        'showOngoingNotification',
+        {
+          'type': 'countdown',
+          'countdownTitle': countdown.title,
+          'countdownCategory': category,
+          'countdownDateStr': dateStr,
+          'countdownId': countdown.id,
+          'timeStr': '就在今天',
+          'notificationId': notifId,
+        },
+      );
+      if (shown == false) {
+        await CountdownReminderPrefs.markDismissed(countdown.id, dateStr);
+        return false;
+      }
+      return shown == true;
     } catch (_) {
       return false;
     }
@@ -981,6 +1005,8 @@ class NotificationService {
           if (r['countdownId'] != null) 'countdownId': r['countdownId'],
           if (r['countdownTitle'] != null)
             'countdownTitle': r['countdownTitle'],
+          if (r['countdownDateStr'] != null)
+            'countdownDateStr': r['countdownDateStr'],
           if (r['habitGoalId'] != null) 'habitGoalId': r['habitGoalId'],
           if (r['financeRuleUuid'] != null)
             'financeRuleUuid': r['financeRuleUuid'],
@@ -1011,66 +1037,10 @@ class NotificationService {
 
   static Future<List<Map<String, dynamic>>> _filterScheduledReminders(
     Iterable<Map<String, dynamic>> reminders,
-  ) async {
-    final liveActivityEnabled =
-        await AppSettingsStorage.isLiveActivityNotificationEnabled();
-    final reminderEnabled =
-        await AppSettingsStorage.isReminderNotificationEnabled();
-    final courseEnabled =
-        await AppSettingsStorage.isCourseNotificationEnabled();
-    final todoLiveEnabled =
-        await AppSettingsStorage.isTodoLiveNotificationEnabled();
-    final specialTodoEnabled =
-        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
-    final countdownEnabled =
-        await AppSettingsStorage.isCountdownNotificationEnabled();
-    final financeEnabled =
-        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
-    final pomodoroEndEnabled =
-        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
+  ) => NotificationServiceShared.filterScheduledReminders(reminders);
 
-    return PlanReminderGuard.filterSchedulablePlanReminders(
-      reminders
-          .where((reminder) {
-            final source = ScheduledReminderRegistry.sourceOf(reminder);
-            final type = reminder['type']?.toString();
-            if (FocusDoNotDisturbService.isActive &&
-                !_isPomodoroReminder(reminder)) {
-              return false;
-            }
-            if (source == ScheduledReminderSources.pomodoro ||
-                type == 'pomodoro' ||
-                type == 'pomodoro_end') {
-              return pomodoroEndEnabled;
-            }
-            if (!reminderEnabled) return false;
-            switch (type) {
-              case 'course':
-                return liveActivityEnabled && courseEnabled;
-              case 'upcoming_todo':
-                return liveActivityEnabled && todoLiveEnabled;
-              case 'special_todo':
-                return liveActivityEnabled && specialTodoEnabled;
-              case 'countdown':
-                return liveActivityEnabled && countdownEnabled;
-              case 'finance_recurring':
-                return financeEnabled;
-              default:
-                return true;
-            }
-          })
-          .map(Map<String, dynamic>.from)
-          .toList(growable: false),
-    );
-  }
-
-  static bool _isPomodoroReminder(Map<String, dynamic> reminder) {
-    final source = ScheduledReminderRegistry.sourceOf(reminder);
-    final type = reminder['type']?.toString();
-    return source == ScheduledReminderSources.pomodoro ||
-        type == 'pomodoro' ||
-        type == 'pomodoro_end';
-  }
+  static bool _isPomodoroReminder(Map<String, dynamic> reminder) =>
+      NotificationServiceShared.isPomodoroReminder(reminder);
 
   /// Desktop notifications are scheduled directly with the OS, so cancel
   /// non-Pomodoro alarms while DND is active and restore them afterwards.
@@ -1137,11 +1107,7 @@ class NotificationService {
     }
   }
 
-  static int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
+  static int? _readInt(dynamic value) => JsonValueParser.toNullableInt(value);
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders({
     bool strict = false,
@@ -1183,6 +1149,78 @@ class NotificationService {
 
     try {
       await _channel.invokeMethod('cancelReminder', {'notifId': notifId});
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
+  }
+
+  static Future<List<String>> getPendingCompletedCountdowns() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return const <String>[];
+    try {
+      final raw = await _channel.invokeMethod<List<dynamic>>(
+        'getPendingCompletedCountdowns',
+      );
+      if (raw == null || raw.isEmpty) return const <String>[];
+      return raw
+          .map((e) => e?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  static Future<void> acknowledgeCompletedCountdowns(List<String> ids) async {
+    if (ids.isEmpty || (!Platform.isAndroid && !Platform.isIOS)) return;
+    try {
+      await _channel.invokeMethod('acknowledgeCompletedCountdowns', {
+        'ids': ids,
+      });
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
+  }
+
+  static Future<void> markCountdownDismissed({
+    required String countdownId,
+    required String dateStr,
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.markDismissed(countdownId, dateStr);
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    final resolvedNotifId = notifId ?? countdownLiveNotifId(countdownId);
+    if (_isDesktopSupported) {
+      await ensureInitialized();
+      await _plugin.cancel(id: resolvedNotifId);
+      return;
+    }
+    try {
+      await _channel.invokeMethod('markCountdownDismissed', {
+        'countdownId': countdownId,
+        'dateStr': dateStr,
+        'notificationId': resolvedNotifId,
+      });
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
+  }
+
+  static Future<void> clearCountdownReminderState(
+    String countdownId, {
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.clearForCountdown(countdownId);
+    final prefix = '${countdownId.trim()}@';
+    _windowsCountdownNotificationKeys.removeWhere((k) => k.startsWith(prefix));
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    final resolvedNotifId = notifId ?? countdownLiveNotifId(countdownId);
+    await cancelSpecialTodoNotification(resolvedNotifId);
+    if (_isDesktopSupported) return;
+    try {
+      await _channel.invokeMethod('clearCountdownReminderState', {
+        'countdownId': countdownId,
+        'notificationId': resolvedNotifId,
+      });
     } catch (_) {
       // Native notification calls are best-effort.
     }
@@ -1308,9 +1346,7 @@ class NotificationService {
     await ensureInitialized();
 
     final title = '❌ 图片识别失败';
-    final body = errorMsg.length > 50
-        ? '${errorMsg.substring(0, 50)}...'
-        : errorMsg;
+    final body = AppTextUtils.truncate(errorMsg, 50, ellipsis: '...');
 
     if (_isDesktopSupported) {
       await _plugin.show(

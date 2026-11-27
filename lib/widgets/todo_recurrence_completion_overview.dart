@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../utils/time_utils.dart';
 
 class TodoRecurrenceCompletionSummary {
   const TodoRecurrenceCompletionSummary({
@@ -60,10 +61,9 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
     var elapsedCount = 0;
 
     for (final occurrence in occurrences.where((todo) => !todo.isDeleted)) {
-      final start = DateTime.fromMillisecondsSinceEpoch(
+      final start = AppTimeFormats.localFromServerTimestamp(
         occurrence.createdDate ?? occurrence.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
       final isDone = occurrence.id == currentTodoId && currentIsDone != null
           ? currentIsDone
           : occurrence.isDone;
@@ -90,7 +90,7 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
       elapsedCount++;
       final effectiveEnd =
           occurrence.dueDate?.toLocal() ??
-          DateTime(start.year, start.month, start.day + 1);
+          AppTimeFormats.localDayStartOffset(start, 1);
       if (effectiveEnd.isBefore(now)) {
         overdueCount++;
       } else {

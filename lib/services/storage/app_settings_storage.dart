@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../github_resource_service.dart';
 import '../privacy_policy_version.dart';
+import '../../utils/time_utils.dart';
 
 class AppSettingsStorage {
   const AppSettingsStorage._();
@@ -312,19 +313,13 @@ class AppSettingsStorage {
   }
 
   static String _financeDateKeyFor(DateTime value) =>
-      '${value.year.toString().padLeft(4, '0')}-'
-      '${value.month.toString().padLeft(2, '0')}-'
-      '${value.day.toString().padLeft(2, '0')}';
+      AppTimeFormats.date(value);
 
   static bool _isFinanceDateKey(String? value) {
     if (value == null) return false;
     final parsed = DateTime.tryParse(value);
     if (parsed == null) return false;
-    final normalized =
-        '${parsed.year.toString().padLeft(4, '0')}-'
-        '${parsed.month.toString().padLeft(2, '0')}-'
-        '${parsed.day.toString().padLeft(2, '0')}';
-    return value == normalized;
+    return value == AppTimeFormats.date(parsed);
   }
 
   static String _financeCloudSyncKey(String username) =>

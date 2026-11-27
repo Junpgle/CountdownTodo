@@ -246,5 +246,29 @@ void main() {
         isNull,
       );
     });
+
+    test('识别戒掉饮料与控糖类已有习惯并提供权威参考资料', () {
+      final recurring = HabitAdaptationService.forDraft(
+        sourceType: HabitSourceType.recurringTodo,
+        name: '戒掉饮料',
+      );
+      expect(recurring?.kind, HabitAdaptationKind.quitSugaryDrinks);
+      expect(recurring?.citations, hasLength(4));
+      expect(
+        recurring?.citations.map((c) => c.publisher).join(' '),
+        allOf(
+          contains('中国营养学会'),
+          contains('WHO'),
+          contains('CDC'),
+          contains('NHS'),
+        ),
+      );
+
+      final quantity = HabitAdaptationService.forDraft(
+        sourceType: HabitSourceType.quantityCheckIn,
+        name: '不喝奶茶',
+      );
+      expect(quantity?.kind, HabitAdaptationKind.quitSugaryDrinks);
+    });
   });
 }

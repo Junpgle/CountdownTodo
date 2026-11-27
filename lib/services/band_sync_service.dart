@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'storage/app_settings_storage.dart';
+import '../utils/time_utils.dart';
 
 class BandSyncListener {
   final void Function(Map<String, dynamic> info)? onDeviceConnected;
@@ -739,7 +740,7 @@ class BandSyncService {
     if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前';
     if (diff.inHours < 24) return '${diff.inHours}小时前';
     final d = _lastSyncTime!;
-    return '${d.month}月${d.day}日 ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return '${d.month}月${d.day}日 ${AppTimeFormats.clock(d)}';
   }
 
   /// 注册消息监听器

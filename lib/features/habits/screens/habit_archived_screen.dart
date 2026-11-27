@@ -1,3 +1,4 @@
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/management_page.dart';
 
@@ -123,7 +124,11 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 4,
+                itemHeight: 84,
+              )
             : RefreshIndicator(
                 onRefresh: _loadData,
                 child: ManagementPage(

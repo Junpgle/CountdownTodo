@@ -2,15 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_future_commitments_service.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_automation_screen.dart';
 import 'finance_loan_screen.dart';
 import 'finance_transaction_detail_screen.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef FinanceFutureCommitmentLoader =
     Future<FinanceFutureCommitmentForecast> Function(DateTime now, int months);
@@ -39,7 +41,9 @@ class FinanceFutureCommitmentsScreen extends StatefulWidget {
 
 class _FinanceFutureCommitmentsScreenState
     extends State<FinanceFutureCommitmentsScreen>
-    with WidgetsBindingObserver {
+    with
+        WidgetsBindingObserver,
+        FinanceRevisionRefreshMixin<FinanceFutureCommitmentsScreen> {
   int _horizonMonths = 3;
   int _loadGeneration = 0;
   FinanceFutureCommitmentForecast? _forecast;
@@ -47,21 +51,18 @@ class _FinanceFutureCommitmentsScreenState
   List<FinanceCategory> _categories = const [];
   bool _isLoading = true;
   String? _loadError;
-  Timer? _revisionRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
   void dispose() {
-    _revisionRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
@@ -72,13 +73,8 @@ class _FinanceFutureCommitmentsScreenState
     }
   }
 
-  void _onFinanceChanged() {
-    _revisionRefreshTimer?.cancel();
-    _revisionRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _revisionRefreshTimer = null;
-      if (mounted) unawaited(_load(showLoading: false));
-    });
-  }
+  @override
+  void onFinanceRevisionRefresh() => unawaited(_load(showLoading: false));
 
   Future<FinanceFutureCommitmentForecast> _read(DateTime now, int months) =>
       widget.loader?.call(now, months) ??
@@ -208,7 +204,12 @@ class _FinanceFutureCommitmentsScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppSkeletonListPage(
+              topPadding: 12,
+              showHeroCard: true,
+              itemCount: 4,
+              itemHeight: 84,
+            )
           : _loadError != null
           ? FinancePageList(
               children: [
@@ -432,8 +433,8 @@ class _FinanceFutureCommitmentsScreenState
   String _dateHeading(String key, DateTime now) {
     final day = dateFromKey(key);
     final label = '${day.month}月${day.day}日';
-    final today = DateTime(now.year, now.month, now.day);
-    final value = DateTime(day.year, day.month, day.day);
+    final today = CalendarDateMath.dateOnly(now);
+    final value = CalendarDateMath.dateOnly(day);
     return value == today ? '$label · 今天' : label;
   }
 

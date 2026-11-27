@@ -1,117 +1,30 @@
 import 'package:flutter/material.dart';
 
-import 'dart:async';
+import '../widgets/splash_screen_shell.dart';
 
-import '../widgets/floating_glass_control.dart';
-
-class DefaultSplashScreen extends StatefulWidget {
+class DefaultSplashScreen extends StatelessWidget {
   final VoidCallback onComplete;
 
   const DefaultSplashScreen({super.key, required this.onComplete});
 
   @override
-  State<DefaultSplashScreen> createState() => _DefaultSplashScreenState();
-}
-
-class _DefaultSplashScreenState extends State<DefaultSplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  Timer? _completeTimer;
-  bool _completed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 150),
-    );
-    _fadeAnimation = _controller.drive(CurveTween(curve: Curves.easeIn));
-
-    _controller.forward();
-
-    // Start timeout after first frame to avoid finishing before splash is visible.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _completeTimer = Timer(const Duration(milliseconds: 650), _completeOnce);
-    });
-  }
-
-  @override
-  void dispose() {
-    _completeTimer?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final colorScheme = Theme.of(context).colorScheme;
-    final isWide = size.width > 600;
-    final assetName = isWide
-        ? 'assets/splash/default_pad.webp'
-        : 'assets/splash/default.webp';
-
-    return Scaffold(
-      body: SizedBox(
-        width: size.width,
-        height: size.height,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset(
-              assetName,
-              width: size.width,
-              height: size.height,
-              cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
-              cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
-              fit: BoxFit.cover,
-              opacity: _fadeAnimation,
-            ),
-            Positioned(
-              top: 48,
-              right: 16,
-              child: SafeArea(
-                child: FloatingGlassControl(
-                  height: 48,
-                  borderRadius: 24,
-                  tint: colorScheme.surface,
-                  haloColor: colorScheme.primary,
-                  child: TextButton(
-                    onPressed: _skip,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(72, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      '跳过',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return SplashScreenShell(
+      onComplete: onComplete,
+      fadeDuration: const Duration(milliseconds: 150),
+      displayDuration: const Duration(milliseconds: 650),
+      startTimerAfterFirstFrame: true,
+      contentBuilder: (context, size, pixelRatio, isWide, fadeAnimation) {
+        final assetName = isWide
+            ? 'assets/splash/default_pad.webp'
+            : 'assets/splash/default.webp';
+        return SplashDefaultAssetImage(
+          assetName: assetName,
+          size: size,
+          pixelRatio: pixelRatio,
+          fadeAnimation: fadeAnimation,
+        );
+      },
     );
-  }
-
-  void _skip() {
-    _controller.stop();
-    _completeOnce();
-  }
-
-  void _completeOnce() {
-    if (_completed || !mounted) return;
-    _completed = true;
-    _completeTimer?.cancel();
-    widget.onComplete();
   }
 }

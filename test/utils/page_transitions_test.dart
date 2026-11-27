@@ -114,6 +114,63 @@ void main() {
     );
   });
 
+  group('route transition glyph-atlas stability', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_animations': true,
+      });
+      PageTransitions.setPowerSaveMode(false);
+      await PageTransitions.init();
+    });
+
+    testWidgets(
+      'material push and pop avoid per-frame Transform.scale over live pages',
+      (WidgetTester tester) async {
+        final key = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: key,
+            theme: ThemeData(pageTransitionsTheme: PageTransitions.theme),
+            home: const Scaffold(body: Center(child: Text('page A'))),
+          ),
+        );
+
+        key.currentState!.push(
+          PageTransitions.material<void>(
+            builder: (_) => const Scaffold(body: Center(child: Text('page B'))),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+
+        final pushTransforms = tester.widgetList<Transform>(
+          find.byType(Transform),
+        );
+        for (final transform in pushTransforms) {
+          expect(
+            transform.transform.getMaxScaleOnAxis(),
+            moreOrLessEquals(1.0, epsilon: 1e-4),
+          );
+        }
+
+        await tester.pumpAndSettle();
+        key.currentState!.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+
+        final popTransforms = tester.widgetList<Transform>(
+          find.byType(Transform),
+        );
+        for (final transform in popTransforms) {
+          expect(
+            transform.transform.getMaxScaleOnAxis(),
+            moreOrLessEquals(1.0, epsilon: 1e-4),
+          );
+        }
+      },
+    );
+  });
+
   group('predictive back gesture rounded corners', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -501,6 +558,111 @@ void main() {
             .where((box) => box.color.a == 1.0)
             .toList();
         expect(coloredBoxes, isNotEmpty);
+      },
+    );
+
+    testWidgets(
+      'already mounted routes refresh layer blur when PageTransitions.init reloads settings',
+      (WidgetTester tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          'enable_layer_blur': false,
+          'enable_motion_blur': false,
+          'page_layer_depth': 100,
+          'animation_duration': 300,
+        });
+        await PageTransitions.init();
+
+        final navigatorKey = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: navigatorKey,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              pageTransitionsTheme: PageTransitions.theme,
+            ),
+            home: Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => navigatorKey.currentState!.push(
+                    PageTransitions.material<void>(
+                      builder: (_) => const Scaffold(body: SizedBox.expand()),
+                    ),
+                  ),
+                  child: const Text('go'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enable layer blur *after* home route is already mounted.
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          'enable_layer_blur': true,
+          'enable_motion_blur': false,
+          'page_layer_depth': 100,
+          'animation_duration': 300,
+        });
+        await PageTransitions.init();
+        await tester.pump();
+
+        await tester.tap(find.text('go'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 150));
+
+        expect(find.byType(ImageFiltered, skipOffstage: false), findsOneWidget);
+
+        await tester.pumpAndSettle();
+        expect(find.byType(ImageFiltered), findsNothing);
+
+        navigatorKey.currentState!.pop();
+        await tester.pumpAndSettle();
+        expect(find.byType(ImageFiltered, skipOffstage: false), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'ContainerTransformRoute applies motion blur mid-transition when enabled',
+      (WidgetTester tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          'enable_layer_blur': false,
+          'enable_motion_blur': true,
+          'animation_duration': 300,
+        });
+        await PageTransitions.init();
+
+        final navigatorKey = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: navigatorKey,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              pageTransitionsTheme: PageTransitions.theme,
+            ),
+            home: Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => navigatorKey.currentState!.push(
+                    PageTransitions.material<void>(
+                      builder: (_) => const Scaffold(body: SizedBox.expand()),
+                    ),
+                  ),
+                  child: const Text('go'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('go'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 150));
+
+        expect(find.byType(ImageFiltered), findsOneWidget);
+
+        await tester.pumpAndSettle();
+        expect(find.byType(ImageFiltered), findsNothing);
       },
     );
   });

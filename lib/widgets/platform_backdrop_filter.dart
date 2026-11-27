@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
+import 'optional_liquid_glass_backdrop.dart';
 
 /// Avoids creating an offscreen blurred texture by default on Windows.
 /// Windows can opt into the standard blur through the Liquid Glass setting.
@@ -12,6 +13,11 @@ import '../utils/app_platform.dart';
 /// The caller still supplies the same child, so bypassing blur only removes the
 /// expensive compositing step while preserving the supplied clipping.
 class PlatformBackdropFilter extends StatelessWidget {
+  static final Listenable _modeListenable = Listenable.merge(<Listenable>[
+    LiquidGlassEffectService.configurationListenable,
+    PowerSaveModeService.enabledListenable,
+  ]);
+
   final ImageFilter filter;
   final Widget child;
   final bool bypassWhenLiquidGlassEnabled;
@@ -52,22 +58,58 @@ class PlatformBackdropFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge(<Listenable>[
-        LiquidGlassEffectService.configurationListenable,
-        PowerSaveModeService.enabledListenable,
-      ]),
-      builder: (context, _) {
+      listenable: _modeListenable,
+      child: child,
+      builder: (context, cachedChild) {
+        final content = cachedChild!;
         if (PowerSaveModeService.isEnabled ||
             Theme.of(context).brightness == Brightness.dark ||
             bypassWhenLiquidGlassEnabled) {
-          return _clipIfNeeded(child);
+          return _clipIfNeeded(content);
         }
         final configuration = LiquidGlassEffectService.configuration;
         if (AppPlatform.isWindows && !configuration.enabled) {
-          return _clipIfNeeded(child);
+          return _clipIfNeeded(content);
+        }
+        final backdropScope = OptionalLiquidGlassBackdropScope.maybeOf(context);
+        if (backdropScope != null && backdropScope.isSolidBackground) {
+          return _clipIfNeeded(content);
+        }
+        final blurredListenable = backdropScope?.blurredWallpaperListenable;
+        if (blurredListenable != null) {
+          return ValueListenableBuilder<PreblurredWallpaperSnapshot?>(
+            valueListenable: blurredListenable,
+            child: content,
+            builder: (context, snapshot, cachedInner) {
+              final inner = cachedInner!;
+              if (snapshot == null) {
+                return _clipIfNeeded(
+                  BackdropFilter.grouped(filter: filter, child: inner),
+                  forceClipRect: true,
+                );
+              }
+              return _clipIfNeeded(
+                Stack(
+                  fit: StackFit.passthrough,
+                  children: <Widget>[
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: PreblurredWallpaperFill(
+                          snapshotListenable: blurredListenable,
+                          viewportKey: backdropScope!.viewportKey,
+                        ),
+                      ),
+                    ),
+                    inner,
+                  ],
+                ),
+                forceClipRect: true,
+              );
+            },
+          );
         }
         return _clipIfNeeded(
-          BackdropFilter.grouped(filter: filter, child: child),
+          BackdropFilter.grouped(filter: filter, child: content),
           forceClipRect: true,
         );
       },

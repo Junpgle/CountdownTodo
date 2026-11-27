@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_platform.dart';
 
 /// The radius shared by the floating navigation shell and its selection lens.
 ///
@@ -525,6 +526,10 @@ class _FloatingBottomNavigationContentState
 
   GlassQuality _qualityFor(LiquidGlassEffectConfiguration configuration) {
     if (!configuration.enabled) return GlassQuality.minimal;
+    if (AppPlatform.isAndroid &&
+        configuration.mode == LiquidGlassEffectMode.enhanced) {
+      return GlassQuality.standard;
+    }
     return liquidGlassQualityForMode(configuration.mode);
   }
 

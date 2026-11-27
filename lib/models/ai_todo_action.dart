@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../utils/json_value_parser.dart';
+
 enum AiTodoActionType {
   createTodo,
   createHabit,
@@ -685,11 +687,8 @@ class AiTodoAction {
     return null;
   }
 
-  static double? _parseDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is num) return value.toDouble();
-    return double.tryParse(value.toString().trim());
-  }
+  static double? _parseDouble(dynamic value) =>
+      JsonValueParser.toNullableDouble(value);
 
   static int? _parseMinuteOfDay(dynamic value) {
     final parsed = _parseInt(value);
@@ -738,11 +737,8 @@ class AiTodoAction {
     return keys.any(json.containsKey);
   }
 
-  static List<String> _parseStringList(dynamic value) {
-    if (value == null) return const [];
-    if (value is List) return value.map((e) => e.toString()).toList();
-    return [value.toString()];
-  }
+  static List<String> _parseStringList(dynamic value) =>
+      JsonValueParser.toStringList(value, wrapScalar: true);
 
   static List<int> _parseIntList(dynamic value) {
     if (value is List) {

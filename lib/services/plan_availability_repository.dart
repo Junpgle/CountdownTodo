@@ -3,9 +3,10 @@ import 'plan_continuous_range_service.dart';
 
 import 'dart:convert';
 
-import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+
+import '../utils/prefs_reload_coalescer.dart';
+import '../utils/time_utils.dart';
 
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
@@ -20,6 +21,7 @@ import 'device_calendar_read_service.dart';
 import 'plan_availability_service.dart';
 import 'plan_availability_preferences.dart';
 import '../features/habits/services/habit_challenge_planning_service.dart';
+import '../utils/calendar_date_math.dart';
 
 typedef PlanAvailabilityLoader = Future<PlanAvailabilitySnapshot> Function(
   PlanAvailabilityQuery query, {
@@ -40,9 +42,8 @@ class PlanAvailabilityRepository {
   }
 
   Future<String> _settingsFingerprint(String username) async {
-    final dateFormat = DateFormat('yyyy-MM-dd');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final keys =
         prefs
             .getKeys()
@@ -220,7 +221,7 @@ class PlanAvailabilityRepository {
       }
     }
     final unknown = <String>[];
-    final dateFormat = DateFormat('yyyy-MM-dd');
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     final day = dateFormat.format(query.dayStart);
     final sourceStartMs = query.sourceStart.millisecondsSinceEpoch;
     final sourceEndMs = query.sourceEnd.millisecondsSinceEpoch;
@@ -249,11 +250,7 @@ class PlanAvailabilityRepository {
     }
 
     final courseIds = <String>{};
-    final sourceStartDay = DateTime(
-      query.sourceStart.year,
-      query.sourceStart.month,
-      query.sourceStart.day,
-    );
+    final sourceStartDay = CalendarDateMath.dateOnly(query.sourceStart);
     for (final course in local.courses) {
       if (course.isDeleted || !courseIds.add(course.uuid)) continue;
       DateTime date;
@@ -546,8 +543,8 @@ class PlanAvailabilityRepository {
     final todo = await PlanTodoGuard.read(db, identity, base.todoId);
     final invalid = PlanAvailabilityService.invalidReason(base, todo, now);
     if (invalid != null) throw PlanAvailabilityException(invalid);
-    final start = DateTime(base.date.year, base.date.month, base.date.day + 1);
-    var end = DateTime(start.year, start.month, start.day + 7);
+    final start = AppTimeFormats.localDayStartOffset(base.date, 1);
+    var end = AppTimeFormats.localDayStartOffset(start, 7);
     final due = PlanAvailabilityService.deadline(todo);
     if (due != null && !due.isAfter(start)) {
       await PlanAvailabilityPreferences.validateQueryDefaults(base);
@@ -566,16 +563,16 @@ class PlanAvailabilityRepository {
       );
     }
     if (due != null && due.isBefore(end)) {
-      final midnight = DateTime(due.year, due.month, due.day);
+      final midnight = CalendarDateMath.dateOnly(due);
       end = due == midnight
           ? midnight
-          : DateTime(due.year, due.month, due.day + 1);
+          : AppTimeFormats.localDayStartOffset(due, 1);
     }
     final queries = <PlanAvailabilityQuery>[];
     for (
       var day = start;
       day.isBefore(end);
-      day = DateTime(day.year, day.month, day.day + 1)
+      day = AppTimeFormats.localDayStartOffset(day, 1)
     ) {
       queries.add(base.onDate(day, limit: 5));
     }
@@ -649,18 +646,14 @@ class PlanAvailabilityRepository {
       throw const PlanAvailabilityException('固定日程已开始，无法再安排日程前准备时间');
     }
 
-    final start = DateTime(base.date.year, base.date.month, base.date.day);
-    final preparationDay = DateTime(
-      preparationEnd.year,
-      preparationEnd.month,
-      preparationEnd.day,
-    );
+    final start = CalendarDateMath.dateOnly(base.date);
+    final preparationDay = CalendarDateMath.dateOnly(preparationEnd);
     var rangeEnd = preparationEnd == preparationDay
         ? preparationDay
         : preparationDay.add(const Duration(days: 1));
     final due = PlanAvailabilityService.deadline(todo);
     if (due != null) {
-      final dueDay = DateTime(due.year, due.month, due.day);
+      final dueDay = CalendarDateMath.dateOnly(due);
       final dueRangeEnd = due == dueDay
           ? dueDay
           : dueDay.add(const Duration(days: 1));
@@ -684,7 +677,7 @@ class PlanAvailabilityRepository {
     for (
       var day = start;
       day.isBefore(rangeEnd);
-      day = DateTime(day.year, day.month, day.day + 1)
+      day = AppTimeFormats.localDayStartOffset(day, 1)
     ) {
       queries.add(base.onDate(day, limit: 5));
     }
@@ -878,8 +871,8 @@ class PlanAvailabilityRepository {
     if (days < 1 || days > 7) {
       throw const PlanAvailabilityException('检查范围须为1至7天');
     }
-    final start = DateTime(date.year, date.month, date.day);
-    final end = DateTime(start.year, start.month, start.day + days);
+    final start = CalendarDateMath.dateOnly(date);
+    final end = AppTimeFormats.localDayStartOffset(start, days);
     final sources = await _readSources(
       username,
       start,
@@ -901,7 +894,7 @@ class PlanAvailabilityRepository {
             PlanAvailabilityQuery(
               username: username,
               todoId: '',
-              date: DateTime(start.year, start.month, start.day + i),
+              date: AppTimeFormats.localDayStartOffset(start, i),
               minutes: 1,
             ),
             sources.local,

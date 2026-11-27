@@ -6,6 +6,7 @@ import 'package:countdown_todo/screens/time_log_screen.dart';
 import 'package:countdown_todo/screens/settings/pages/preference_settings_page.dart';
 import 'package:countdown_todo/screens/settings/pages/interconnect_settings_page.dart';
 import 'package:countdown_todo/utils/page_transitions.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -35,7 +36,8 @@ Future<void> _finishSettingsLoad(WidgetTester tester) async {
       () => Future<void>.delayed(const Duration(milliseconds: 30)),
     );
     await tester.pump(const Duration(milliseconds: 50));
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty) {
       break;
     }
   }

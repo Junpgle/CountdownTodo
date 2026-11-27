@@ -196,10 +196,7 @@ class AiActionParser {
       }
     }
 
-    final matches = RegExp(
-      r'\[ACTION_START\](.*?)\[ACTION_END\]',
-      dotAll: true,
-    ).allMatches(content).toList();
+    final matches = _rxAiActionParser1.allMatches(content).toList();
 
     if (matches.isNotEmpty) {
       for (final match in matches) {
@@ -220,7 +217,7 @@ class AiActionParser {
 
     if (actions.isEmpty) {
       final contentWithoutSuggestions = content.replaceAll(
-        RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
+        _rxAiActionParser2,
         '',
       );
       for (final candidate in _findLooseActionJsonBlocks(
@@ -253,10 +250,8 @@ class AiActionParser {
     return actions;
   }
 
-  static bool _explicitWholeTodoSeriesRequest(String message) => RegExp(
-    r'(整个系列|全系列|所有期次|全部期次|所有周期|全部周期|每一期|全体期次|whole series|entire series|all occurrences)',
-    caseSensitive: false,
-  ).hasMatch(message);
+  static bool _explicitWholeTodoSeriesRequest(String message) =>
+      _rxAiActionParser3.hasMatch(message);
 
   static void _resolveCountdownTeamBindings(
     List<AiTodoAction> actions, {
@@ -334,24 +329,12 @@ class AiActionParser {
   }
 
   static String cleanActionContent(String content) {
-    final hadLegacyToolCall = RegExp(
-      r'</?tool_call\b',
-      caseSensitive: false,
-    ).hasMatch(content);
-    String cleaned =
-        AiMemoryService.cleanContent(
-              AiSettingsNavigationService.cleanContent(
-                AiToolResultContext.withoutHistory(content),
-              ),
-            )
-            .replaceAll(
-              RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),
-              '',
-            )
-            .replaceAll(
-              RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
-              '',
-            );
+    final hadLegacyToolCall = _rxAiActionParser4.hasMatch(content);
+    String cleaned = AiMemoryService.cleanContent(
+      AiSettingsNavigationService.cleanContent(
+        AiToolResultContext.withoutHistory(content),
+      ),
+    ).replaceAll(_rxAiActionParser5, '').replaceAll(_rxAiActionParser2, '');
 
     // Only remove well-formed JSON arrays/objects that start with "action" key
     // and contain known action types, to avoid accidentally removing user text.
@@ -360,25 +343,13 @@ class AiActionParser {
     }
     cleaned = cleaned
         .replaceAll(RegExp('\\[(?:$_legacyActionMarkers)\\]'), '')
-        .replaceAll(RegExp(r'```(?:json)?\s*```', dotAll: true), '');
-    cleaned = cleaned.replaceAll(
-      RegExp(
-        r'<tool_call\b[^>]*>[\s\S]*?</tool_call\s*>',
-        caseSensitive: false,
-      ),
-      '',
-    );
-    final malformedToolCall = RegExp(
-      r'<tool_call\b',
-      caseSensitive: false,
-    ).firstMatch(cleaned);
+        .replaceAll(_rxAiActionParser6, '');
+    cleaned = cleaned.replaceAll(_rxAiActionParser7, '');
+    final malformedToolCall = _rxAiActionParser8.firstMatch(cleaned);
     if (malformedToolCall != null) {
       cleaned = cleaned.substring(0, malformedToolCall.start);
     }
-    cleaned = cleaned.replaceAll(
-      RegExp(r'</tool_call\s*>', caseSensitive: false),
-      '',
-    );
+    cleaned = cleaned.replaceAll(_rxAiActionParser9, '');
 
     final visibleContent = cleaned.trim();
     if (visibleContent.isEmpty && hadLegacyToolCall) {
@@ -392,10 +363,7 @@ class AiActionParser {
     Iterable<String> previouslyShown = const [],
     String? contextText,
   }) {
-    final regex = RegExp(
-      r'\[SUGGEST_START\](.*?)\[SUGGEST_END\]',
-      dotAll: true,
-    );
+    final regex = _rxAiActionParser10;
     final matches = regex.allMatches(content).toList();
     if (matches.isEmpty) return const [];
     try {
@@ -443,11 +411,9 @@ class AiActionParser {
     for (final genericTerm in genericTerms) {
       normalized = normalized.replaceAll(genericTerm, ' ');
     }
-    for (final match in RegExp(
-      r'[\u4E00-\u9FFF]{2,}|[a-zA-Z][a-zA-Z0-9_-]*',
-    ).allMatches(normalized)) {
+    for (final match in _rxAiActionParser11.allMatches(normalized)) {
       final word = match.group(0)!;
-      if (RegExp(r'^[a-z]').hasMatch(word)) {
+      if (_rxAiActionParser12.hasMatch(word)) {
         if (word.length >= 3) terms.add(word);
         continue;
       }
@@ -1052,10 +1018,7 @@ class AiActionParser {
   }
 
   static bool _looksLikePlanningIntent(String text) {
-    return RegExp(
-      r'(规划|安排.*(待办|任务|时间|计划)|计划.*(待办|任务|时间)|排.*计划|plan(?:ning)?|time\s*block)',
-      caseSensitive: false,
-    ).hasMatch(text);
+    return _rxAiActionParser13.hasMatch(text);
   }
 
   static String? _resolveExistingTodoId(
@@ -1124,7 +1087,7 @@ class AiActionParser {
   }
 
   static String _normalizeTitle(String value) {
-    return value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    return value.trim().replaceAll(_rxAiActionParser14, ' ');
   }
 
   static List<Map<String, dynamic>> _listFromOrSelf(
@@ -1244,3 +1207,48 @@ class AiActionParser {
     return -1;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiActionParser1 = RegExp(
+  r'\[ACTION_START\](.*?)\[ACTION_END\]',
+  dotAll: true,
+);
+final RegExp _rxAiActionParser2 = RegExp(
+  r'\[SUGGEST_START\].*?\[SUGGEST_END\]',
+  dotAll: true,
+);
+final RegExp _rxAiActionParser3 = RegExp(
+  r'(整个系列|全系列|所有期次|全部期次|所有周期|全部周期|每一期|全体期次|whole series|entire series|all occurrences)',
+  caseSensitive: false,
+);
+final RegExp _rxAiActionParser4 = RegExp(
+  r'</?tool_call\b',
+  caseSensitive: false,
+);
+final RegExp _rxAiActionParser5 = RegExp(
+  r'\[ACTION_START\].*?\[ACTION_END\]',
+  dotAll: true,
+);
+final RegExp _rxAiActionParser6 = RegExp(r'```(?:json)?\s*```', dotAll: true);
+final RegExp _rxAiActionParser7 = RegExp(
+  r'<tool_call\b[^>]*>[\s\S]*?</tool_call\s*>',
+  caseSensitive: false,
+);
+final RegExp _rxAiActionParser8 = RegExp(r'<tool_call\b', caseSensitive: false);
+final RegExp _rxAiActionParser9 = RegExp(
+  r'</tool_call\s*>',
+  caseSensitive: false,
+);
+final RegExp _rxAiActionParser10 = RegExp(
+  r'\[SUGGEST_START\](.*?)\[SUGGEST_END\]',
+  dotAll: true,
+);
+final RegExp _rxAiActionParser11 = RegExp(
+  r'[\u4E00-\u9FFF]{2,}|[a-zA-Z][a-zA-Z0-9_-]*',
+);
+final RegExp _rxAiActionParser12 = RegExp(r'^[a-z]');
+final RegExp _rxAiActionParser13 = RegExp(
+  r'(规划|安排.*(待办|任务|时间|计划)|计划.*(待办|任务|时间)|排.*计划|plan(?:ning)?|time\s*block)',
+  caseSensitive: false,
+);
+final RegExp _rxAiActionParser14 = RegExp(r'\s+');

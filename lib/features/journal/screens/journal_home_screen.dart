@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
 import '../services/journal_picker.dart';
 import '../services/journal_storage.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
 import 'journal_trash_screen.dart';
 import '../../../utils/app_dialogs.dart';
-
-DateFormat _photoWallDateFormat() => AppTimeFormats.dateFormatter('MM月dd日');
 
 class JournalHomeScreen extends StatefulWidget {
   final String username;
@@ -199,46 +197,54 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: '日记回收站',
-            onPressed: _openTrash,
-            icon: Badge(
-              isLabelVisible: _trashCount > 0,
-              label: Text('$_trashCount'),
-              child: const Icon(Icons.delete_outline_rounded),
-            ),
-          ),
-          IconButton(
-            tooltip: '搜索日记',
-            onPressed: () => _showSearch(context),
-            icon: const Icon(Icons.search_rounded),
-          ),
-          MenuAnchor(
-            menuChildren: [
-              _buildViewMenuItem(
-                isPhotoWall: false,
-                icon: Icons.view_agenda_rounded,
-                label: '时间线',
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '日记回收站',
+                onPressed: _openTrash,
+                icon: Badge(
+                  isLabelVisible: _trashCount > 0,
+                  label: Text('$_trashCount'),
+                  child: const Icon(Icons.delete_outline_rounded),
+                ),
               ),
-              _buildViewMenuItem(
-                isPhotoWall: true,
-                icon: Icons.grid_view_rounded,
-                label: '照片墙',
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '搜索日记',
+                onPressed: () => _showSearch(context),
+                icon: const Icon(Icons.search_rounded),
+              ),
+              MenuAnchor(
+                menuChildren: [
+                  _buildViewMenuItem(
+                    isPhotoWall: false,
+                    icon: Icons.view_agenda_rounded,
+                    label: '时间线',
+                  ),
+                  _buildViewMenuItem(
+                    isPhotoWall: true,
+                    icon: Icons.grid_view_rounded,
+                    label: '照片墙',
+                  ),
+                ],
+                builder: (context, controller, child) {
+                  return IconButton(
+                    style: floatingGlassPlainIconButtonStyle(),
+                    tooltip: '选择视图',
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                    icon: const Icon(Icons.filter_list_rounded),
+                  );
+                },
               ),
             ],
-            builder: (context, controller, child) {
-              return IconButton(
-                tooltip: '选择视图',
-                onPressed: () {
-                  if (controller.isOpen) {
-                    controller.close();
-                  } else {
-                    controller.open();
-                  }
-                },
-                icon: const Icon(Icons.filter_list_rounded),
-              );
-            },
           ),
           const SizedBox(width: 8),
         ],
@@ -246,7 +252,16 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                horizontalPadding: isWide ? 40 : 16,
+                useTwoColumnsOnWide: true,
+                wideBreakpoint: 900,
+                narrowColumns: _isPhotoWall ? 2 : 1,
+                wideColumns: _isPhotoWall ? 4 : 2,
+                itemCount: _isPhotoWall ? 8 : 6,
+                itemHeight: 112,
+              )
             : entries.isEmpty
             ? _JournalEmptyState(
                 hasSearch: _query.isNotEmpty,
@@ -392,12 +407,6 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 }
 
-typedef _TimelineDisplayItem = ({
-  String? month,
-  JournalEntry? entry,
-  List<JournalEntry>? gridEntries,
-});
-
 class _Timeline extends StatelessWidget {
   final double topPadding;
   final List<JournalEntry> entries;
@@ -425,98 +434,100 @@ class _Timeline extends StatelessWidget {
       final key = monthFormat.format(entry.occurredAt);
       grouped.putIfAbsent(key, () => []).add(entry);
     }
-    final displayItems = <_TimelineDisplayItem>[];
-    for (final group in grouped.entries) {
-      displayItems.add((month: group.key, entry: null, gridEntries: null));
-      if (isWide) {
-        displayItems.add((month: null, entry: null, gridEntries: group.value));
-      } else {
-        for (final entry in group.value) {
-          displayItems.add((month: null, entry: entry, gridEntries: null));
-          displayItems.add((month: null, entry: null, gridEntries: null));
-        }
-      }
-    }
 
-    return ListView.builder(
+    final double horizontalPadding = isWide ? 40 : 20;
+    final horizontalEdgeInsets = EdgeInsets.symmetric(
+      horizontal: horizontalPadding,
+    );
+
+    return CustomScrollView(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        isWide ? 40 : 20,
-        topPadding + 12,
-        isWide ? 40 : 20,
-        120,
-      ),
-      itemCount: displayItems.length + (isLoadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == displayItems.length) {
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final item = displayItems[index];
-        if (item.month != null) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(4, 18, 4, 12),
-            child: Row(
-              children: [
-                Text(
-                  item.month!,
-                  style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
+      slivers: [
+        SliverToBoxAdapter(child: SizedBox(height: topPadding + 12)),
+        for (final group in grouped.entries) ...[
+          SliverPadding(
+            padding: horizontalEdgeInsets,
+            sliver: SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 18, 4, 12),
+                child: Row(
+                  children: [
+                    Text(
+                      group.key,
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Divider(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Divider(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
+              ),
+            ),
+          ),
+          if (isWide)
+            SliverPadding(
+              padding: horizontalEdgeInsets,
+              sliver: SliverGrid.builder(
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final id = key.value;
+                    final idx = group.value.indexWhere((e) => e.id == id);
+                    return idx != -1 ? idx : null;
+                  }
+                  return null;
+                },
+                itemCount: group.value.length,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 560,
+                  mainAxisExtent: 220,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
                 ),
-              ],
+                itemBuilder: (_, gridIndex) {
+                  final entry = group.value[gridIndex];
+                  return _JournalCard(
+                    key: ValueKey<String>(entry.id),
+                    entry: entry,
+                    accountId: accountId,
+                    onTap: () => onTap(entry),
+                  );
+                },
+              ),
+            )
+          else ...[
+            SliverPadding(
+              padding: horizontalEdgeInsets,
+              sliver: SliverList.separated(
+                itemCount: group.value.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 14),
+                itemBuilder: (_, idx) {
+                  final entry = group.value[idx];
+                  return _JournalCard(
+                    key: ValueKey<String>(entry.id),
+                    entry: entry,
+                    accountId: accountId,
+                    onTap: () => onTap(entry),
+                  );
+                },
+              ),
             ),
-          );
-        }
-
-        final gridEntries = item.gridEntries;
-        if (gridEntries != null) {
-          return GridView.builder(
-            padding: EdgeInsets.zero,
-            primary: false,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            findChildIndexCallback: (Key key) {
-              if (key is ValueKey<String>) {
-                final id = key.value;
-                final index = gridEntries.indexWhere((e) => e.id == id);
-                return index != -1 ? index : null;
-              }
-              return null;
-            },
-            itemCount: gridEntries.length,
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 560,
-              mainAxisExtent: 220,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+            const SliverToBoxAdapter(child: SizedBox(height: 14)),
+          ],
+        ],
+        if (isLoadingMore)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
             ),
-            itemBuilder: (_, gridIndex) => _JournalCard(
-              key: ValueKey<String>(gridEntries[gridIndex].id),
-              entry: gridEntries[gridIndex],
-              accountId: accountId,
-              onTap: () => onTap(gridEntries[gridIndex]),
-            ),
-          );
-        }
-
-        final entry = item.entry;
-        if (entry == null) return const SizedBox(height: 14);
-        return _JournalCard(
-          entry: entry,
-          accountId: accountId,
-          onTap: () => onTap(entry),
-        );
-      },
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 120)),
+      ],
     );
   }
 }
@@ -576,7 +587,6 @@ class _PhotoWall extends StatelessWidget {
 }
 
 class _JournalCard extends StatelessWidget {
-  static final DateFormat _entryDateFormat = DateFormat('MM月dd日 · E', 'zh_CN');
   static final RegExp _previewWhitespace = RegExp(r'\s+');
 
   final JournalEntry entry;
@@ -622,7 +632,11 @@ class _JournalCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _entryDateFormat.format(entry.occurredAt),
+                        AppTimeFormats.format(
+                          entry.occurredAt,
+                          'MM月dd日 · E',
+                          locale: 'zh_CN',
+                        ),
                         style: Theme.of(context).textTheme.labelMedium
                             ?.copyWith(
                               color: scheme.primary,
@@ -703,7 +717,6 @@ class _PhotoWallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final entryDateFormat = _photoWallDateFormat();
     return RepaintBoundary(
       child: Card(
         clipBehavior: Clip.antiAlias,
@@ -738,7 +751,7 @@ class _PhotoWallCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      entryDateFormat.format(entry.occurredAt),
+                      AppTimeFormats.monthDayCn(entry.occurredAt),
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: scheme.primary,
                         fontWeight: FontWeight.w700,

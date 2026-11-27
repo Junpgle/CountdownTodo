@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 import '../storage_service.dart';
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
@@ -59,16 +57,6 @@ class IslandSlotData {
 class IslandSlotProvider {
   IslandSlotProvider._();
 
-  static final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  static DateFormat _dateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
-
   /// Detect special todo type from title keywords
   static String detectTodoType(String title) =>
       ItemSemanticsService.specialTodoTypeForTitle(title);
@@ -124,15 +112,14 @@ class IslandSlotProvider {
   /// Get date slot data
   static Future<IslandSlotData> _getDateSlot(bool isLeft) async {
     final now = DateTime.now();
-    final display = _dateFormat('M月d日').format(now);
+    final display = AppTimeFormats.dateFormatter('M月d日').format(now);
     return IslandSlotData(display: display, type: 'date', detailTitle: display);
   }
 
   /// Get weekday slot data
   static Future<IslandSlotData> _getWeekdaySlot(bool isLeft) async {
     final now = DateTime.now();
-    final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final weekday = weekdays[now.weekday - 1];
+    final weekday = AppTimeFormats.weekdayLabel(now);
     return IslandSlotData(
       display: weekday,
       type: 'weekday',
@@ -145,7 +132,7 @@ class IslandSlotProvider {
     final username = await StorageService.getLoginSession() ?? 'default';
     final todos = await StorageService.getTodos(username);
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
 
     TodoItem? selectedTodo;
     DateTime? selectedDueDay;
@@ -156,7 +143,7 @@ class IslandSlotProvider {
       final dueDate = todo.dueDate;
       final dueDay = dueDate == null
           ? null
-          : DateTime(dueDate.year, dueDate.month, dueDate.day);
+          : CalendarDateMath.dateOnly(dueDate);
       final urgency = dueDay == null
           ? 3
           : dueDay.isBefore(today)
@@ -190,7 +177,7 @@ class IslandSlotProvider {
       return const IslandSlotData(display: '', type: 'todo');
     }
     final time = t.dueDate != null
-        ? _dateFormat('MM-dd').format(t.dueDate!)
+        ? AppTimeFormats.dateFormatter('MM-dd').format(t.dueDate!)
         : '';
 
     // 判断是否逾期
@@ -205,7 +192,7 @@ class IslandSlotProvider {
         : (time.isNotEmpty ? '${t.title} [$overdueTag$time]' : t.title);
 
     final timeRange = t.dueDate != null
-        ? _dateFormat('HH:mm').format(t.dueDate!)
+        ? AppTimeFormats.dateFormatter('HH:mm').format(t.dueDate!)
         : '';
 
     return IslandSlotData(
@@ -295,18 +282,19 @@ class IslandSlotProvider {
     DateTime? courseDate;
     if (course.date.isNotEmpty) {
       try {
-        courseDate = _dateFormat('yyyy-MM-dd').parseStrict(course.date);
+        courseDate = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+            .parseStrict(course.date);
       } catch (_) {
         courseDate = null;
       }
     }
 
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (courseDate == null) {
       return fallbackTomorrow ? '明天' : '今天';
     }
 
-    final day = DateTime(courseDate.year, courseDate.month, courseDate.day);
+    final day = CalendarDateMath.dateOnly(courseDate);
     final diff = CalendarDateMath.daysBetween(today, day);
     if (diff <= 0) return '今天';
     if (diff == 1) return '明天';
@@ -319,7 +307,7 @@ class IslandSlotProvider {
     try {
       final record = await PomodoroService.getLatestRecord();
       if (record != null) {
-        final time = _dateFormat('HH:mm').format(
+        final time = AppTimeFormats.dateFormatter('HH:mm').format(
           DateTime.fromMillisecondsSinceEpoch(
             record.endTime ?? record.startTime,
           ),
@@ -367,7 +355,8 @@ class IslandSlotProvider {
           display: display,
           type: 'countdown',
           detailTitle: c.title,
-          detailTime: _dateFormat('yyyy-MM-dd').format(c.targetDate),
+          detailTime: AppTimeFormats.dateFormatter('yyyy-MM-dd')
+              .format(c.targetDate),
           detailNote: '还有$days天',
         );
       }
@@ -447,13 +436,12 @@ class IslandSlotProvider {
           .toList();
 
       for (var t in active) {
-        if (t.dueDate!.year == now.year &&
-            t.dueDate!.month == now.month &&
-            t.dueDate!.day == now.day) {
+        if (AppTimeFormats.isSameDay(t.dueDate!, now)) {
           queue.add({
             'text': t.title,
             'type': 'todo',
-            'timeLabel': _dateFormat('HH:mm').format(t.dueDate!),
+            'timeLabel': AppTimeFormats.dateFormatter('HH:mm')
+                .format(t.dueDate!),
           });
         }
       }
@@ -464,9 +452,7 @@ class IslandSlotProvider {
         for (final c in countdowns) {
           if (c.isDeleted || c.isCompleted) continue;
           final targetLocal = c.targetDate.toLocal();
-          if (targetLocal.year == now.year &&
-              targetLocal.month == now.month &&
-              targetLocal.day == now.day) {
+          if (AppTimeFormats.isSameDay(targetLocal, now)) {
             final category = ItemSemanticsService.countdownCategoryForTitle(
               c.title,
             );

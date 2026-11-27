@@ -38,19 +38,24 @@ void main() {
     );
   });
 
-  test('PomodoroCommunityStats.tryParse parses valid numeric and string payloads', () {
-    final parsed = PomodoroCommunityStats.tryParse({
-      'has_data': true,
-      'avg_seconds': 2700,
-      'total_seconds': 5400.4,
-      'active_users': '2',
-    });
+  test(
+    'PomodoroCommunityStats.tryParse parses valid numeric and string payloads',
+    () {
+      final parsed = PomodoroCommunityStats.tryParse({
+        'has_data': true,
+        'avg_seconds': 2700,
+        'total_seconds': 5400.4,
+        'active_users': '2',
+        'active_user_days': 4,
+        'window_days': 7,
+      });
 
-    expect(parsed, isNotNull);
-    expect(parsed!.avgSeconds, 2700);
-    expect(parsed.totalSeconds, 5400);
-    expect(parsed.activeUsers, 2);
-  });
+      expect(parsed, isNotNull);
+      expect(parsed!.avgSeconds, 2700);
+      expect(parsed.totalSeconds, 5400);
+      expect(parsed.activeUsers, 2);
+    },
+  );
 
   test('getTodayCommunityStats caches within 60s and refreshes on forceRefresh or day change', () async {
     var calls = 0;
@@ -87,11 +92,14 @@ void main() {
     expect(forced?.avgSeconds, 3000);
   });
 
-  test('getTodayCommunityStats returns null gracefully when fetcher returns null', () async {
-    final res = await PomodoroService.getTodayCommunityStats(
-      now: DateTime(2026, 11, 19, 10, 0),
-      fetcher: (_, _) async => null,
-    );
-    expect(res, isNull);
-  });
+  test(
+    'getTodayCommunityStats returns null gracefully when fetcher returns null',
+    () async {
+      final res = await PomodoroService.getTodayCommunityStats(
+        now: DateTime(2026, 11, 19, 10, 0),
+        fetcher: (_, _) async => null,
+      );
+      expect(res, isNull);
+    },
+  );
 }

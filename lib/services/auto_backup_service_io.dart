@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/auto_backup_models.dart';
 import '../models/data_export_models.dart';
 import '../storage_service.dart';
+import '../utils/time_utils.dart';
 import 'data_export_service.dart';
 
 /// 本地定期自动备份服务（Android / iOS / macOS / Windows / Linux）。
@@ -149,7 +150,7 @@ class AutoBackupService {
       var targetFile = File(p.join(targetDir.path, fileName));
       if (await targetFile.exists()) {
         fileName =
-            '${AutoBackupPolicy.filePrefix}${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}_${now.millisecond.toString().padLeft(3, '0')}${AutoBackupPolicy.fileExtension}';
+            '${AutoBackupPolicy.filePrefix}${AppTimeFormats.fileTimestamp(now)}_${now.millisecond.toString().padLeft(3, '0')}${AutoBackupPolicy.fileExtension}';
         targetFile = File(p.join(targetDir.path, fileName));
       }
 

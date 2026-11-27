@@ -76,7 +76,7 @@ class AiMemoryService {
   }
 
   static String normalizeContent(String raw) {
-    final compact = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final compact = raw.replaceAll(_rxCached23_1, ' ').trim();
     if (compact.length <= maxItemLength) return compact;
     return compact.substring(0, maxItemLength).trim();
   }
@@ -362,3 +362,6 @@ class AiMemoryService {
     return content.replaceAll(_memoryBlockPattern, '').trim();
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached23_1 = RegExp(r'\s+');

@@ -4,12 +4,11 @@ import '../models.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../services/home_dashboard_section_data_cache.dart';
 import '../services/timeline_service.dart';
-import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import '../utils/time_utils.dart';
+import 'app_skeleton.dart';
 import 'optional_liquid_glass_surface.dart';
-import 'platform_backdrop_filter.dart';
 
 // ============================================================
 // 首页「个人时间轴」微型时光流液态毛玻璃卡片
@@ -270,18 +269,20 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: useLightHeader
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.timeline_rounded,
-                  size: 20,
-                  color: useLightHeader ? Colors.white : colorScheme.primary,
+              ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: useLightHeader
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.timeline_rounded,
+                    size: 20,
+                    color: useLightHeader ? Colors.white : colorScheme.primary,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -372,19 +373,14 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     EdgeInsetsGeometry padding = const EdgeInsets.all(18),
     double? width = double.infinity,
   }) {
-    return PlatformBackdropFilter(
-      filter: AppImageFilters.blur10,
-      bypassWhenLiquidGlassEnabled: true,
-      clipBorderRadius: BorderRadius.circular(borderRadius),
-      child: OptionalLiquidGlassCard(
-        width: width,
-        padding: padding,
-        borderRadius: borderRadius,
-        fallbackDecoration: fallbackDecoration,
-        tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-        isDark: Theme.of(context).brightness == Brightness.dark,
-        child: child,
-      ),
+    return OptionalLiquidGlassCard(
+      width: width,
+      padding: padding,
+      borderRadius: borderRadius,
+      fallbackDecoration: fallbackDecoration,
+      tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+      isDark: Theme.of(context).brightness == Brightness.dark,
+      child: child,
     );
   }
 
@@ -422,11 +418,52 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       padding: const EdgeInsets.all(18),
       width: double.infinity,
       child: (_isLoading && !_hasLoaded)
-          ? const SizedBox(
-              width: double.infinity,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+          ? AppSkeletonScope(
+              isLightSurface: widget.isLight && isDark,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        AppSkeletonCircle(size: 16),
+                        SizedBox(width: 8),
+                        AppSkeletonLine(width: 86, height: 12),
+                        SizedBox(width: 10),
+                        Expanded(child: AppSkeletonLine(height: 11)),
+                      ],
+                    ),
+                    SizedBox(height: 14),
+                    Row(
+                      children: [
+                        AppSkeletonCircle(size: 10),
+                        SizedBox(width: 10),
+                        AppSkeletonBox(width: 44, height: 18, borderRadius: 9),
+                        SizedBox(width: 10),
+                        Expanded(child: AppSkeletonLine(height: 13)),
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        AppSkeletonCircle(size: 10),
+                        SizedBox(width: 10),
+                        AppSkeletonBox(width: 44, height: 18, borderRadius: 9),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: 0.72,
+                              child: AppSkeletonLine(height: 13),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             )
           : _events.isEmpty
@@ -482,8 +519,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         firstTime.minute == latestTime.minute) {
       spanLabel = '记录于 ${AppTimeFormats.clock(latestTime)}';
     } else {
-      spanLabel =
-          '活跃时段 ${AppTimeFormats.clock(firstTime)} - ${AppTimeFormats.clock(latestTime)}';
+      spanLabel = '活跃时段 ${AppTimeFormats.range(firstTime, latestTime)}';
     }
 
     return InkWell(
@@ -572,42 +608,46 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 左侧竖向时间轴线 + 发光节点圆点
-          SizedBox(
-            width: 20,
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                if (!isSingle)
+          ExcludeSemantics(
+            child: SizedBox(
+              width: 20,
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  if (!isSingle)
+                    Positioned(
+                      top: isFirst ? 8 : 0,
+                      bottom: isLast ? null : 0,
+                      height: isLast ? 8 : null,
+                      child: Container(
+                        width: 1.5,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : colorScheme.outlineVariant.withValues(
+                                alpha: 0.45,
+                              ),
+                      ),
+                    ),
                   Positioned(
-                    top: isFirst ? 8 : 0,
-                    bottom: isLast ? null : 0,
-                    height: isLast ? 8 : null,
+                    top: 4,
                     child: Container(
-                      width: 1.5,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.12)
-                          : colorScheme.outlineVariant.withValues(alpha: 0.45),
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: nodeColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: nodeColor.withValues(alpha: 0.35),
+                            blurRadius: 4,
+                            spreadRadius: 0.5,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                Positioned(
-                  top: 4,
-                  child: Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      color: nodeColor,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: nodeColor.withValues(alpha: 0.35),
-                          blurRadius: 4,
-                          spreadRadius: 0.5,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -615,69 +655,71 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(bottom: isLast ? 2 : 12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: _openTodayReport,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            timeStr,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'monospace',
-                              color: isDark
-                                  ? Colors.white70
-                                  : colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1.5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: nodeColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: nodeColor.withValues(alpha: 0.25),
-                                width: 0.8,
-                              ),
-                            ),
-                            child: Text(
-                              details.badge,
+              child: MergeSemantics(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: _openTodayReport,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              timeStr,
                               style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: nodeColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'monospace',
+                                color: isDark
+                                    ? Colors.white70
+                                    : colorScheme.onSurfaceVariant,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        details.content,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.9)
-                              : colorScheme.onSurface,
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: nodeColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: nodeColor.withValues(alpha: 0.25),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                details.badge,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: nodeColor,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 3),
+                        Text(
+                          details.content,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.9)
+                                : colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

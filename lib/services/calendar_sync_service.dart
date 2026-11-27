@@ -6,6 +6,7 @@ import '../storage_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/calendar_date_math.dart';
 import 'course_service.dart';
+import '../utils/time_utils.dart';
 
 enum CalendarSyncEntryType { todo, fixedSchedule, course, countdown, planBlock }
 
@@ -57,7 +58,7 @@ class CalendarSyncEntry {
   };
 
   int _platformMillis(DateTime value) {
-    if (!allDay) return value.toUtc().millisecondsSinceEpoch;
+    if (!allDay) return AppTimeFormats.toServerTimestamp(value);
     return DateTime.utc(
       value.year,
       value.month,
@@ -270,10 +271,9 @@ class CalendarSyncService {
   static CalendarSyncEntry? _todoToEntry(TodoItem todo) {
     if (todo.timeMode == TodoTimeMode.unscheduled) return null;
 
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final due = todo.dueDate!.toLocal();
 
     final details = <String>[
@@ -411,8 +411,7 @@ class CalendarSyncService {
     );
   }
 
-  static DateTime _dateOnly(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+  static DateTime _dateOnly(DateTime date) => CalendarDateMath.dateOnly(date);
 
   static DateTime _exclusiveAllDayEnd(DateTime start, DateTime end) {
     final endDate = _dateOnly(end);

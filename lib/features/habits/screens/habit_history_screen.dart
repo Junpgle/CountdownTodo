@@ -1,3 +1,4 @@
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -211,10 +212,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     return grouped;
   }
 
-  String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
   Widget _buildHistoryRow(Object row, ColorScheme colorScheme) {
     if (row is _HabitHistorySectionHeader) {
@@ -272,27 +270,14 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
 
   Future<void> _deleteCheckIn(HabitCheckIn checkIn) async {
     final isFreeze = checkIn.source == HabitCheckInSource.freeze;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isFreeze ? '撤销免扣守护' : '删除打卡'),
-        content: Text(isFreeze ? '确定撤销该日的免扣卡守护吗？免扣卡将自动退回背包。' : '确定删除这条打卡记录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: Text(isFreeze ? '撤销守护' : '删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: isFreeze ? '撤销免扣守护' : '删除打卡',
+      message: isFreeze ? '确定撤销该日的免扣卡守护吗？免扣卡将自动退回背包。' : '确定删除这条打卡记录吗？',
+      confirmLabel: isFreeze ? '撤销守护' : '删除',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     if (isFreeze) {
       await HabitFreezeService.revokeFreeze(
         goal: widget.goal,
@@ -345,7 +330,13 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 840,
+                showFilterChips: true,
+                itemCount: 6,
+                itemHeight: 78,
+              )
             : Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 840),
@@ -414,18 +405,13 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   }
 
   static DateTime _todoDate(TodoItem todo) {
-    return DateTime.fromMillisecondsSinceEpoch(
+    return AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
   }
 
-  static String _todoDateKey(TodoItem todo) {
-    final local = _todoDate(todo);
-    return '${local.year.toString().padLeft(4, '0')}-'
-        '${local.month.toString().padLeft(2, '0')}-'
-        '${local.day.toString().padLeft(2, '0')}';
-  }
+  static String _todoDateKey(TodoItem todo) =>
+      AppTimeFormats.date(_todoDate(todo));
 
   Widget _focusRecordRow(ColorScheme colorScheme, PomodoroRecord record) {
     final local = DateTime.fromMillisecondsSinceEpoch(record.startTime)
@@ -651,8 +637,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
       int.parse(parts[1]),
       int.parse(parts[2]),
     );
-    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return '${date.month}月${date.day}日 ${weekdays[date.weekday - 1]}';
+    return '${date.month}月${date.day}日 ${AppTimeFormats.weekdayLabel(date)}';
   }
 
   static String _trimNumber(double value) {

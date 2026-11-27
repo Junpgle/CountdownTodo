@@ -1,18 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
-
-final Map<(String?, String), DateFormat> _shareReadonlyDateFormats = {};
-
-DateFormat _shareReadonlyDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _shareReadonlyDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/time_utils.dart';
 
 /// 分享页只读待办组件（支持折叠，与手机端布局一致）
 class ShareTodoSection extends StatefulWidget {
@@ -66,7 +56,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final colorScheme = Theme.of(context).colorScheme;
 
     final DateTime now = widget.clock?.call() ?? DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime today = CalendarDateMath.dateOnly(now);
 
     final displayProjection = _isWholeListExpanded
         ? _buildSortedDisplayItems(now, today)
@@ -664,10 +654,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
   DateTime _fallbackDateForTodo(TodoItem todo) {
     if (todo.dueDate != null) return todo.dueDate!;
-    return DateTime.fromMillisecondsSinceEpoch(
+    return AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
   }
 
   DateTime? _latestFallbackGroupDate(List<TodoItem> groupTodos) {
@@ -711,10 +700,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   double _todoProgress(TodoItem todo, DateTime now) {
     final end = todo.effectiveDueAt;
     if (end == null) return 0;
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(
+    final createdAt = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final totalMinutes = end.difference(createdAt).inMinutes;
     if (totalMinutes <= 0 || !now.isAfter(createdAt)) return 0;
     return (now.difference(createdAt).inMinutes / totalMinutes)
@@ -725,21 +713,20 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   bool _isHistoricalTodo(TodoItem todo, DateTime today) {
     if (!todo.isDone) return false;
     if (todo.dueDate != null) return _isBeforeDay(todo.dueDate, today);
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(
+    final createdAt = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     return _isBeforeDay(createdAt, today);
   }
 
   bool _isBeforeDay(DateTime? date, DateTime today) {
     if (date == null) return false;
-    return DateTime(date.year, date.month, date.day).isBefore(today);
+    return CalendarDateMath.dateOnly(date).isBefore(today);
   }
 
   bool _isAfterDay(DateTime? date, DateTime today) {
     if (date == null) return false;
-    return DateTime(date.year, date.month, date.day).isAfter(today);
+    return CalendarDateMath.dateOnly(date).isAfter(today);
   }
 
   Widget _buildDisplayItem(
@@ -843,7 +830,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                   if (nearestDeadline != null && !expanded) ...[
                     const SizedBox(width: 8),
                     Text(
-                      _shareReadonlyDateFormat('MM/dd').format(nearestDeadline),
+                      AppTimeFormats.dateFormatter('MM/dd')
+                          .format(nearestDeadline),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -896,13 +884,12 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final now = widget.clock?.call() ?? DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime today = CalendarDateMath.dateOnly(now);
 
     // 进度
-    final cDate = DateTime.fromMillisecondsSinceEpoch(
+    final cDate = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final progress = _todoProgress(todo, now);
 
     // 颜色
@@ -935,7 +922,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         todo.dueDate!.month,
         todo.dueDate!.day,
       );
-      final todayDate = DateTime(now.year, now.month, now.day);
+      final todayDate = CalendarDateMath.dateOnly(now);
       if (isOverdue) {
         badge = "已逾期";
         badgeColor = Colors.redAccent.shade200;
@@ -951,7 +938,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         badgeBg = Colors.orange.withValues(alpha: 0.12);
       }
     } else {
-      badge = _shareReadonlyDateFormat('MM/dd').format(cDate);
+      badge = AppTimeFormats.dateFormatter('MM/dd').format(cDate);
       badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
       badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }
@@ -1109,17 +1096,17 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       final date = end ?? start;
       return date == null
           ? null
-          : '${_shareReadonlyDateFormat('MM/dd').format(date)} 内完成';
+          : '${AppTimeFormats.dateFormatter('MM/dd').format(date)} 内完成';
     }
     if (start != null && end != null && todo.hasLegacyTimeRange) {
-      return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)} → '
-          '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end)}';
+      return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)} → '
+          '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end)}';
     }
     if (end != null) {
-      return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end)} 前完成';
+      return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end)} 前完成';
     }
     if (start != null) {
-      return '开始 ${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)}';
+      return '开始 ${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)}';
     }
     return null;
   }
@@ -1409,39 +1396,30 @@ class ShareScheduleSection extends StatelessWidget {
   String _formatScheduleTime(FixedScheduleItem item) {
     final start = item.startTime == null
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(
-            item.startTime!,
-            isUtc: true,
-          ).toLocal();
+        : AppTimeFormats.localFromServerTimestamp(item.startTime!);
     final end = item.endTime == null
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(
-            item.endTime!,
-            isUtc: true,
-          ).toLocal();
+        : AppTimeFormats.localFromServerTimestamp(item.endTime!);
     final date = DateTime.tryParse(item.date)?.toLocal();
 
     if (start == null && end == null) {
       return date == null
           ? '时间待定'
-          : '${_shareReadonlyDateFormat('MM/dd').format(date)} · 时间待定';
+          : '${AppTimeFormats.dateFormatter('MM/dd').format(date)} · 时间待定';
     }
     if (start != null && end != null) {
-      final sameDay =
-          start.year == end.year &&
-          start.month == end.month &&
-          start.day == end.day;
+      final sameDay = AppTimeFormats.isSameDay(start, end);
       return sameDay
-          ? '${_shareReadonlyDateFormat('MM/dd').format(start)} '
-                '${_shareReadonlyDateFormat('HH:mm').format(start)} → '
-                '${_shareReadonlyDateFormat('HH:mm').format(end)}'
-          : '${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)} → '
-                '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end)}';
+          ? '${AppTimeFormats.dateFormatter('MM/dd').format(start)} '
+                '${AppTimeFormats.dateFormatter('HH:mm').format(start)} → '
+                '${AppTimeFormats.dateFormatter('HH:mm').format(end)}'
+          : '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)} → '
+                '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end)}';
     }
     if (start != null) {
-      return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)} · 结束待定';
+      return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)} · 结束待定';
     }
-    return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end!)} · 开始待定';
+    return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end!)} · 开始待定';
   }
 
   Color _phaseColor(ColorScheme colorScheme, FixedSchedulePhase phase) {
@@ -1480,7 +1458,7 @@ class ShareCountdownSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme;
 
@@ -1677,7 +1655,7 @@ class ShareCountdownSection extends StatelessWidget {
                         const SizedBox(height: 2),
                         // 目标日
                         Text(
-                          "目标日: ${_shareReadonlyDateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                          "目标日: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(item.targetDate)}",
                           style: TextStyle(
                             fontSize: 9,
                             color: subTextColor,

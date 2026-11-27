@@ -12,6 +12,7 @@ import 'habit_adaptation_service.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_source_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef _HabitReminderWork = ({
   HabitGoal goal,
@@ -104,7 +105,7 @@ abstract final class HabitReminderService {
     Map<String, List<HabitGoalRuleRevision>> rulesByHabit,
   ) async {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final logicalKey = HabitRuleResolver.dayKey(today);
     final reminders = <Map<String, dynamic>>[];
     final prepared = <_HabitReminderWork>[];

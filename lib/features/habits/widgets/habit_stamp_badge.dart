@@ -125,22 +125,20 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final stampColor = widget.color ?? const Color(0xFFE53935); // 传统朱砂红印泥色
-
-    final stampBody = Container(
+  Widget _buildStampBody(Color baseColor, double targetOpacity) {
+    final color = baseColor.withValues(alpha: baseColor.a * targetOpacity);
+    return Container(
       width: widget.size,
       height: widget.size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: stampColor,
+          color: color,
           width: (widget.size * 0.035).clamp(2.0, 5.0),
         ),
         boxShadow: [
           BoxShadow(
-            color: stampColor.withValues(alpha: 0.25),
+            color: color.withValues(alpha: color.a * 0.25),
             blurRadius: widget.size * 0.1,
             spreadRadius: 1,
           ),
@@ -151,18 +149,14 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: stampColor.withValues(alpha: 0.75),
+            color: color.withValues(alpha: color.a * 0.75),
             width: (widget.size * 0.015).clamp(1.0, 2.5),
           ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.star_rounded,
-              size: widget.size * 0.18,
-              color: stampColor,
-            ),
+            Icon(Icons.star_rounded, size: widget.size * 0.18, color: color),
             SizedBox(height: widget.size * 0.015),
             Text(
               widget.text,
@@ -170,7 +164,7 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
                 fontSize: widget.size * 0.16,
                 fontWeight: FontWeight.w900,
                 letterSpacing: widget.size * 0.015,
-                color: stampColor,
+                color: color,
                 height: 1.1,
               ),
             ),
@@ -181,43 +175,44 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
                 fontSize: widget.size * 0.075,
                 fontWeight: FontWeight.w800,
                 letterSpacing: widget.size * 0.01,
-                color: stampColor.withValues(alpha: 0.85),
+                color: color.withValues(alpha: color.a * 0.85),
               ),
             ),
           ],
         ),
       ),
     );
+  }
 
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        child: stampBody,
-        builder: (context, child) {
-          final badgeOpacity = (_opacityAnimation.value * widget.opacity).clamp(
-            0.0,
-            1.0,
-          );
+  @override
+  Widget build(BuildContext context) {
+    final stampColor = widget.color ?? const Color(0xFFE53935); // 传统朱砂红印泥色
+    final targetOpacity = widget.opacity.clamp(0.0, 1.0).toDouble();
+    final stampBody = _buildStampBody(stampColor, targetOpacity);
 
-          if (_controller.value >= 0.999) {
-            final settled = badgeOpacity >= 0.999
-                ? child!
-                : Opacity(opacity: badgeOpacity, child: child);
-            return widget.angle.abs() <= 0.0001
-                ? settled
-                : Transform.rotate(angle: widget.angle, child: settled);
-          }
+    return ExcludeSemantics(
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          child: stampBody,
+          builder: (context, child) {
+            if (_controller.value >= 0.999) {
+              return widget.angle.abs() <= 0.0001
+                  ? child!
+                  : Transform.rotate(angle: widget.angle, child: child!);
+            }
 
-          final shockwaveProgress = (_controller.value - 0.45) / 0.55;
-          final shockwaveAlpha =
-              (1.0 - shockwaveProgress).clamp(0.0, 1.0) * 0.45 * widget.opacity;
+            final shockwaveProgress = (_controller.value - 0.45) / 0.55;
+            final shockwaveAlpha =
+                (1.0 - shockwaveProgress).clamp(0.0, 1.0) *
+                0.45 *
+                targetOpacity;
+            final fadeValue = _opacityAnimation.value.clamp(0.0, 1.0);
 
-          return Transform.rotate(
-            angle: widget.angle,
-            child: Transform.scale(
-              scale: _scaleAnimation.value,
-              child: Opacity(
-                opacity: badgeOpacity,
+            return Transform.rotate(
+              angle: widget.angle,
+              child: Transform.scale(
+                scale: _scaleAnimation.value,
                 child: Stack(
                   alignment: Alignment.center,
                   clipBehavior: Clip.none,
@@ -241,14 +236,21 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
                         ),
                       ),
 
-                    // 印章实体
-                    child!,
+                    // 印章实体：直接使用 FadeTransition，避免 settled 后常驻 Opacity saveLayer
+                    fadeValue >= 0.999
+                        ? child!
+                        : fadeValue <= 0.001
+                        ? Visibility.maintain(visible: false, child: child!)
+                        : FadeTransition(
+                            opacity: _opacityAnimation,
+                            child: RepaintBoundary(child: child),
+                          ),
                   ],
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

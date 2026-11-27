@@ -9,6 +9,8 @@ import '../services/habit_adaptation_service.dart';
 import '../services/habit_rule_resolver.dart';
 import 'habit_sleep_duration_service.dart';
 import 'habit_sleep_goal_resolver.dart';
+import '../../../utils/time_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 只有时间格占位（例如 15 / 30 分钟）时，早睡节点采用的时间。
 enum HabitSleepLogTimeSelection { startTime, midpoint }
@@ -165,7 +167,7 @@ abstract final class HabitSleepLogMigrationService {
 
     final current = now ?? DateTime.now();
     final cutoff = HabitRuleResolver.addCalendarDays(
-      DateTime(current.year, current.month, current.day),
+      CalendarDateMath.dateOnly(current),
       -lookbackDays,
     );
 
@@ -809,20 +811,13 @@ abstract final class HabitSleepLogMigrationService {
     return start.add(end.difference(start) ~/ 2);
   }
 
-  static String formatMinute(int minute) {
-    final normalized = _normalizeMinute(minute);
-    final hour = normalized ~/ 60;
-    final value = normalized % 60;
-    return '${hour.toString().padLeft(2, '0')}:${value.toString().padLeft(2, '0')}';
-  }
+  static String formatMinute(int minute) =>
+      AppTimeFormats.minuteOfDay(_normalizeMinute(minute));
 
   static String _normalize(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      value.toLowerCase().replaceAll(_rxCached8_1, '');
 
-  static String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  static String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
   static int _normalizeMinute(int minute) {
     final normalized = minute % 1440;
@@ -870,3 +865,6 @@ class _SleepSample {
     required this.gridOnly,
   });
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached8_1 = RegExp(r'\s+');

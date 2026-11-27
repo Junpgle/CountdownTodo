@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../services/reminder_schedule_service.dart';
+import '../../../utils/time_utils.dart';
 import '../models/finance_models.dart';
 import 'finance_automation_service.dart';
 import 'finance_storage.dart';
@@ -134,7 +135,7 @@ abstract final class FinanceRepository {
   getCumulativeBalanceEvents({required int throughAt}) async {
     final date = DateTime.fromMillisecondsSinceEpoch(throughAt);
     final transactions = await getTransactions(
-      to: DateTime(date.year, date.month, date.day + 2),
+      to: AppTimeFormats.localDayStartOffset(date, 2),
     );
     final events =
         transactions
@@ -822,7 +823,7 @@ abstract final class FinanceRepository {
     final csv = rows.map((row) => row.map(_escapeCsv).join(',')).join('\n');
     return BrowserFileService.saveTextFile(
       '\uFEFF$csv',
-      'countdown_todo_finance_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
+      'countdown_todo_finance_${AppTimeFormats.fileTimestamp(DateTime.now())}.csv',
       mimeType: 'text/csv;charset=utf-8',
     );
   }
@@ -891,4 +892,25 @@ String formatFinanceAmountInput(int amountMinor) => formatFinanceAmount(
 
 String formatSignedFinanceAmount(int amountMinor, FinanceTransactionType type) {
   return '${type.signedPrefix}${formatFinanceAmount(amountMinor)}';
+}
+
+/// Returns common formatted representations of [amountMinor] for text search.
+String formatFinanceAmountSearchText(
+  int amountMinor, {
+  String? currencyCode,
+  FinanceTransactionType? type,
+}) {
+  final plain = (amountMinor.abs() / 100).toStringAsFixed(2);
+  final formatted = formatFinanceAmount(amountMinor);
+  final formattedNoSymbol = formatFinanceAmount(amountMinor, withSymbol: false);
+  final parts = <String>[
+    plain,
+    '¥$plain',
+    formatted,
+    formattedNoSymbol,
+    if (currencyCode != null && currencyCode.trim().isNotEmpty)
+      '${currencyCode.trim()} $plain',
+    if (type != null) formatSignedFinanceAmount(amountMinor, type),
+  ];
+  return parts.join(' ');
 }

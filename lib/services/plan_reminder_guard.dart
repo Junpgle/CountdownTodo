@@ -1,6 +1,7 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../utils/prefs_reload_coalescer.dart';
+import '../utils/text_utils.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import 'scheduled_reminder_registry.dart';
@@ -16,10 +17,8 @@ class PlanReminderGuard {
         r['type'] == 'plan_block' &&
         ScheduledReminderRegistry.sourceOf(r) ==
             ScheduledReminderSources.reminderSchedule;
-    String? planId(Map<String, dynamic> reminder) {
-      final id = reminder['planBlockId']?.toString().trim();
-      return id == null || id.isEmpty ? null : id;
-    }
+    String? planId(Map<String, dynamic> reminder) =>
+        AppTextUtils.trimToNull(reminder['planBlockId']?.toString());
 
     final ids = reminders
         .where(isPlan)
@@ -30,8 +29,7 @@ class PlanReminderGuard {
     if (ids.isEmpty) {
       return reminders.where((r) => !isPlan(r)).toList(growable: false);
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final username = prefs.getString('current_login_user');
     final identity = await PlanTodoIdentity.capture(
       username == null || username.isEmpty ? 'default' : username,

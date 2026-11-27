@@ -210,6 +210,42 @@ void main() {
     expect(find.text('Shared settings content'), findsOneWidget);
   });
 
+  testWidgets('staticMaterial panel avoids BackdropFilter without any scope', (
+    tester,
+  ) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              OptionalLiquidGlassPanel(
+                mode: OptionalLiquidGlassPanelMode.staticMaterial,
+                fallback: SizedBox(),
+                child: Text('Unscoped static panel'),
+              ),
+              OptionalLiquidGlassBackdropScope(
+                isSolidBackground: true,
+                child: AppSettingsCard(child: Text('Solid scoped settings')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      find.byKey(const ValueKey<String>('optional-liquid-glass-static-panel')),
+      findsNWidgets(2),
+    );
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.text('Unscoped static panel'), findsOneWidget);
+    expect(find.text('Solid scoped settings'), findsOneWidget);
+  });
+
   testWidgets(
     'staticMaterial mode inside overlay avoids redundant BackdropFilter',
     (tester) async {
@@ -1084,42 +1120,271 @@ void main() {
     );
   });
 
-  testWidgets('PlatformBackdropFilter wraps child with BackdropFilter and clips', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: PlatformBackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: const Text('Test Child'),
+  testWidgets(
+    'PlatformBackdropFilter wraps child with BackdropFilter and clips',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlatformBackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: const Text('Test Child'),
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Test Child'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byType(ClipRect), findsOneWidget);
-  });
+      expect(find.text('Test Child'), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(ClipRect), findsOneWidget);
+    },
+  );
 
-  testWidgets('PlatformBackdropFilter clips with ClipRRect when radius provided', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: PlatformBackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            clipBorderRadius: BorderRadius.circular(16),
-            child: const Text('Test Child Rounded'),
+  testWidgets(
+    'PlatformBackdropFilter clips with ClipRRect when radius provided',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlatformBackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              clipBorderRadius: BorderRadius.circular(16),
+              child: const Text('Test Child Rounded'),
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Test Child Rounded'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byType(ClipRRect), findsOneWidget);
+      expect(find.text('Test Child Rounded'), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(ClipRRect), findsOneWidget);
+    },
+  );
+
+  test('liquidGlassPrefersStaticChromeFor limits static chrome to wide Android standard scopes', () {
+    expect(
+      liquidGlassPrefersStaticChromeFor(
+        isAndroid: true,
+        viewportWidth: 800,
+        mode: LiquidGlassEffectMode.standard,
+        hasBackdropScope: true,
+      ),
+      isTrue,
+    );
+    expect(
+      liquidGlassPrefersStaticChromeFor(
+        isAndroid: true,
+        viewportWidth: 412,
+        mode: LiquidGlassEffectMode.standard,
+        hasBackdropScope: true,
+      ),
+      isFalse,
+    );
+    expect(
+      liquidGlassPrefersStaticChromeFor(
+        isAndroid: true,
+        viewportWidth: 800,
+        mode: LiquidGlassEffectMode.enhanced,
+        hasBackdropScope: true,
+      ),
+      isFalse,
+    );
+    expect(
+      liquidGlassPrefersStaticChromeFor(
+        isAndroid: false,
+        viewportWidth: 800,
+        mode: LiquidGlassEffectMode.standard,
+        hasBackdropScope: true,
+      ),
+      isFalse,
+    );
+    expect(
+      liquidGlassPrefersStaticChromeFor(
+        isAndroid: true,
+        viewportWidth: 800,
+        mode: LiquidGlassEffectMode.standard,
+        hasBackdropScope: false,
+      ),
+      isFalse,
+    );
   });
+
+  testWidgets(
+    'Standard OptionalLiquidGlassSurface avoids extra saturation filter pass and modulates shellOpacity without Opacity wrapper',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                OptionalLiquidGlassSurface(
+                  height: 60,
+                  margin: EdgeInsets.zero,
+                  borderRadius: 30,
+                  tint: Colors.blue,
+                  isDark: false,
+                  shellOpacity: 0.5,
+                  fallback: const SizedBox(),
+                  child: const Text('Bottom shell'),
+                ),
+                OptionalLiquidGlassSurface(
+                  height: 44,
+                  margin: EdgeInsets.zero,
+                  borderRadius: 22,
+                  tint: Colors.blue,
+                  isDark: false,
+                  shellOpacity: 0.5,
+                  useTopBarGlass: true,
+                  fallback: const SizedBox(),
+                  child: const Text('Top pill shell'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      final containers = tester
+          .widgetList<GlassContainer>(find.byType(GlassContainer))
+          .toList();
+      expect(containers, hasLength(2));
+      for (final container in containers) {
+        expect(container.settings?.saturation, 1.0);
+        expect(container.settings?.standardOpacityMultiplier, 0.5);
+      }
+      expect(find.byType(Opacity), findsNothing);
+    },
+  );
+
+  test('liquidGlassPrefersGroupedFrostedChromeFor covers wide Android scopes in both modes', () {
+    expect(
+      liquidGlassPrefersGroupedFrostedChromeFor(
+        isAndroid: true,
+        viewportWidth: 800,
+        hasBackdropScope: true,
+      ),
+      isTrue,
+    );
+    expect(
+      liquidGlassPrefersGroupedFrostedChromeFor(
+        isAndroid: true,
+        viewportWidth: 412,
+        hasBackdropScope: true,
+      ),
+      isFalse,
+    );
+    expect(
+      liquidGlassPrefersGroupedFrostedChromeFor(
+        isAndroid: false,
+        viewportWidth: 800,
+        hasBackdropScope: true,
+      ),
+      isFalse,
+    );
+    expect(
+      liquidGlassPrefersGroupedFrostedChromeFor(
+        isAndroid: true,
+        viewportWidth: 800,
+        hasBackdropScope: false,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets(
+    'nested OptionalLiquidGlassCard inside an outer card shares backdrop without double PreblurredWallpaperFill',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, 64, 64),
+        Paint()..color = const Color(0xFF335577),
+      );
+      final picture = recorder.endRecording();
+      final image = await tester.runAsync(() => picture.toImage(64, 64));
+      picture.dispose();
+      addTearDown(image!.dispose);
+
+      final notifier = ValueNotifier<PreblurredWallpaperSnapshot?>(
+        PreblurredWallpaperSnapshot(
+          image: image,
+          viewportSize: const Size(800, 600),
+          blurSigma: 3.0,
+        ),
+      );
+      addTearDown(notifier.dispose);
+      final viewportKey = GlobalKey();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OptionalLiquidGlassBackdropScope(
+              key: viewportKey,
+              isSolidBackground: false,
+              blurredWallpaperListenable: notifier,
+              viewportKey: viewportKey,
+              child: OptionalLiquidGlassCard(
+                fallbackDecoration: const BoxDecoration(),
+                child: Column(
+                  children: const [
+                    OptionalLiquidGlassCard(
+                      fallbackDecoration: BoxDecoration(),
+                      child: Text('Nested row 1'),
+                    ),
+                    OptionalLiquidGlassCard(
+                      fallbackDecoration: BoxDecoration(),
+                      child: Text('Nested row 2'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.byType(PreblurredWallpaperFill), findsOneWidget);
+      expect(find.text('Nested row 1'), findsOneWidget);
+      expect(find.text('Nested row 2'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'EmptyState and SectionHeader respect solid backdrop scope and trim icon semantics',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: OptionalLiquidGlassBackdropScope(
+              isSolidBackground: true,
+              child: Column(
+                children: [
+                  SectionHeader(
+                    title: '待办事项',
+                    icon: Icons.check_circle_outline,
+                  ),
+                  EmptyState(text: '暂无内容'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.byType(BackdropFilter), findsNothing);
+      expect(find.text('待办事项'), findsOneWidget);
+      expect(find.text('暂无内容'), findsOneWidget);
+    },
+  );
 }

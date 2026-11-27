@@ -8,6 +8,7 @@ import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
 import '../models/finance_models.dart';
 import 'finance_storage.dart';
+import '../../../utils/time_utils.dart';
 
 /// 一个周期账单在某个周期内的实际发生时间。
 class FinanceRecurringDue {
@@ -480,8 +481,8 @@ abstract final class FinanceAutomationService {
       Duration(minutes: remainingLeadMinutes),
     );
     return {
-      'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-      'startAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
+      'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+      'startAtMs': AppTimeFormats.toServerTimestamp(due.dueAt),
       'title': '💳 周期账单：${financeRecurringRuleDisplayName(due.rule, rules)}',
       'text':
           '${dateKey(due.dueAt)} · ${_formatAmount(due.rule.amountMinor)}'
@@ -491,7 +492,7 @@ abstract final class FinanceAutomationService {
       'financeRuleUuid': due.rule.uuid,
       'financePeriodKey': due.periodKey,
       'financeAutoGenerate': due.rule.autoGenerate,
-      'financeDueAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
+      'financeDueAtMs': AppTimeFormats.toServerTimestamp(due.dueAt),
       'withinWindow': triggerAt.isAfter(current) && triggerAt.isBefore(limit),
     };
   }

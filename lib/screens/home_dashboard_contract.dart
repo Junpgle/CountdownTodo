@@ -63,7 +63,9 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkAutoSync({bool force = false});
 
-  void _markCurrentTodoDone({int? notifId});
+  Future<void> _markCurrentTodoDone({int? notifId, String? countdownId});
+
+  Future<void> _reconcilePendingCompletedCountdowns();
 
   Future<void> _checkExactAlarmPermission();
 
@@ -328,7 +330,9 @@ mixin _HomeDashboardContract {
 
   bool _isMapEqual(Map a, Map b);
 
-  Widget _buildDashboardSkeleton(bool isLight);
-
-  Widget _buildSkeletonCard(Color color, {required double height});
+  Widget _buildDashboardSkeleton(
+    bool isLight, {
+    double topPadding = 16,
+    bool isTablet = false,
+  });
 }

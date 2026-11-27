@@ -12,27 +12,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:web/web.dart' as web;
 
 import 'services/github_resource_service.dart';
+import 'update_service_models.dart';
 import './utils/app_dialogs.dart';
+import './utils/time_utils.dart';
 
-class ChangelogEntry {
-  final String versionName;
-  final String date;
-  final List<String> items;
-
-  const ChangelogEntry({
-    required this.versionName,
-    required this.date,
-    required this.items,
-  });
-
-  factory ChangelogEntry.fromJson(Map<String, dynamic> json) => ChangelogEntry(
-    versionName: json['version_name']?.toString() ?? '',
-    date: json['date']?.toString() ?? '',
-    items: (json['items'] as List<dynamic>? ?? [])
-        .map((e) => e.toString())
-        .toList(),
-  );
-}
+export 'update_service_models.dart';
 
 class AppManifest {
   final int versionCode;
@@ -88,30 +72,6 @@ class AppManifest {
   }
 }
 
-class ChangelogArchiveConfig {
-  final String url;
-  final int count;
-  final String latestVersion;
-  final String oldestVersion;
-
-  const ChangelogArchiveConfig({
-    required this.url,
-    this.count = 0,
-    this.latestVersion = '',
-    this.oldestVersion = '',
-  });
-
-  bool get isAvailable => url.isNotEmpty && count > 0;
-
-  factory ChangelogArchiveConfig.fromJson(Map<String, dynamic> json) =>
-      ChangelogArchiveConfig(
-        url: json['url']?.toString() ?? '',
-        count: int.tryParse(json['count']?.toString() ?? '0') ?? 0,
-        latestVersion: json['latest_version']?.toString() ?? '',
-        oldestVersion: json['oldest_version']?.toString() ?? '',
-      );
-}
-
 class UpdateInfo {
   final String title;
   final String description;
@@ -133,124 +93,6 @@ class UpdateInfo {
       androidArchPackages = json['android_arch_packages'] != null
           ? Map<String, String>.from(json['android_arch_packages'] as Map)
           : {};
-}
-
-class Announcement {
-  final bool show;
-  final String id;
-  final String title;
-  final String content;
-  final String remindMode;
-  final List<String> targetVersions;
-
-  Announcement.fromJson(Map<String, dynamic> json)
-    : show = json['show'] == true,
-      id = json['id']?.toString() ?? '',
-      title = json['title']?.toString() ?? '',
-      content = json['content']?.toString() ?? '',
-      remindMode = json['remind_mode']?.toString() ?? 'once',
-      targetVersions =
-          (json['target_versions'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [];
-}
-
-class WallpaperConfig {
-  final bool show;
-  final String imageUrl;
-
-  WallpaperConfig.fromJson(Map<String, dynamic> json)
-    : show = json['show'] == true,
-      imageUrl = json['image_url']?.toString() ?? '';
-}
-
-class _AnnouncementCarouselDialog extends StatefulWidget {
-  final List<Announcement> announcements;
-
-  const _AnnouncementCarouselDialog({required this.announcements});
-
-  @override
-  State<_AnnouncementCarouselDialog> createState() =>
-      _AnnouncementCarouselDialogState();
-}
-
-class _AnnouncementCarouselDialogState
-    extends State<_AnnouncementCarouselDialog> {
-  int _currentIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final announcement = widget.announcements[_currentIndex];
-    final isLast = _currentIndex == widget.announcements.length - 1;
-    final isFirst = _currentIndex == 0;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return AlertDialog(
-      title: Row(
-        children: [
-          Icon(Icons.campaign, color: colorScheme.primary),
-          const SizedBox(width: 8),
-          Expanded(child: Text(announcement.title)),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(announcement.content),
-          if (widget.announcements.length > 1) ...[
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                widget.announcements.length,
-                (index) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _currentIndex == index
-                        ? colorScheme.primary
-                        : colorScheme.outlineVariant,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-      actions: [
-        if (!isFirst)
-          TextButton(
-            onPressed: () => setState(() => _currentIndex--),
-            child: const Text('上一条'),
-          ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
-        if (!isLast)
-          ElevatedButton(
-            onPressed: () => setState(() => _currentIndex++),
-            child: const Text('下一条'),
-          )
-        else
-          ElevatedButton(
-            onPressed: () async {
-              for (final ann in widget.announcements) {
-                if (ann.remindMode == 'once') {
-                  await UpdateService.markAnnouncementAsRead(ann.id);
-                }
-              }
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('全部已读'),
-          ),
-      ],
-    );
-  }
 }
 
 class UpdateService {
@@ -373,15 +215,8 @@ class UpdateService {
     return !isRead;
   }
 
-  static int _dateTimeToSortKey(DateTime dt) {
-    final y = dt.year.toString().padLeft(4, '0');
-    final m = dt.month.toString().padLeft(2, '0');
-    final d = dt.day.toString().padLeft(2, '0');
-    final hh = dt.hour.toString().padLeft(2, '0');
-    final mm = dt.minute.toString().padLeft(2, '0');
-    final ss = dt.second.toString().padLeft(2, '0');
-    return int.tryParse('$y$m$d$hh$mm$ss') ?? 0;
-  }
+  static int _dateTimeToSortKey(DateTime dt) =>
+      int.tryParse(AppTimeFormats.format(dt, 'yyyyMMddHHmmss')) ?? 0;
 
   static int parseAnnouncementSortKey(String id) {
     if (id.isEmpty) return 0;
@@ -392,9 +227,7 @@ class UpdateService {
     if (unixMs != null) {
       final ms = int.tryParse(unixMs);
       if (ms != null) {
-        return _dateTimeToSortKey(
-          DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal(),
-        );
+        return _dateTimeToSortKey(AppTimeFormats.localFromServerTimestamp(ms));
       }
     }
 
@@ -403,10 +236,7 @@ class UpdateService {
       final sec = int.tryParse(unixSec);
       if (sec != null) {
         return _dateTimeToSortKey(
-          DateTime.fromMillisecondsSinceEpoch(
-            sec * 1000,
-            isUtc: true,
-          ).toLocal(),
+          AppTimeFormats.localFromServerTimestamp(sec * 1000),
         );
       }
     }
@@ -959,7 +789,10 @@ class UpdateService {
     await showAppDialog(
       context: context,
       barrierDismissible: true,
-      builder: (_) => _AnnouncementCarouselDialog(announcements: announcements),
+      builder: (_) => AnnouncementCarouselDialog(
+        announcements: announcements,
+        onMarkAsRead: UpdateService.markAnnouncementAsRead,
+      ),
     );
 
     _isAnnouncementDialogShowing = false;
@@ -1133,12 +966,8 @@ class UpdateService {
     web.window.location.reload();
   }
 
-  static String _todayKey([DateTime? now]) {
-    final date = now ?? DateTime.now();
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '${date.year}-$month-$day';
-  }
+  static String _todayKey([DateTime? now]) =>
+      AppTimeFormats.date(now ?? DateTime.now());
 
   static String _snoozeValue(String versionName, [DateTime? now]) =>
       '${_todayKey(now)}|$versionName';

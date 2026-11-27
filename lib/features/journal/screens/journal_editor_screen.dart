@@ -295,24 +295,14 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
         _titleController.text != _initialTitle ||
         _contentController.text != _initialContent;
     if (!_dirty && !hasTextChanges) return true;
-    final discard = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('放弃这篇日记？'),
-        content: const Text('目前的内容还没有保存。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('继续编辑'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('放弃'),
-          ),
-        ],
-      ),
+    final discard = await AppDialogs.confirm(
+      context,
+      title: '放弃这篇日记？',
+      message: '目前的内容还没有保存。',
+      cancelLabel: '继续编辑',
+      confirmLabel: '放弃',
     );
-    if (discard != true) return false;
+    if (!discard) return false;
     await _removeUnsavedMedia();
     return true;
   }

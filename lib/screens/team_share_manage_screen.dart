@@ -6,8 +6,11 @@ import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/team_share_link.dart';
+import '../widgets/app_skeleton.dart';
+import '../widgets/app_state_views.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class TeamShareManageScreen extends StatefulWidget {
   final Team team;
@@ -59,26 +62,15 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   Future<void> _deleteShare(TeamShare share) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除分享'),
-        content: Text('确定删除分享链接「${share.title ?? share.shareCode}」？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除分享',
+      message: '确定删除分享链接「${share.title ?? share.shareCode}」？',
+      confirmLabel: '删除',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       final result = await ApiService.deleteTeamShare(share.shareCode);
       if (result['success'] == true) {
         _loadShares();
@@ -129,7 +121,11 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 4,
+                itemHeight: 96,
+              )
             : _shares.isEmpty
             ? _buildEmptyState()
             : _buildSharesList(topBarHeight),
@@ -143,24 +139,11 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.link_off, size: 64, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          Text(
-            '暂无分享链接',
-            style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '创建分享链接，让其他人以网页形式查看团队事项',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return const AppEmptyState(
+      icon: Icons.link_off,
+      iconSize: 64,
+      title: '暂无分享链接',
+      message: '创建分享链接，让其他人以网页形式查看团队事项',
     );
   }
 
@@ -344,7 +327,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
 
   String _formatDate(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return AppTimeFormats.date(date);
   }
 }
 

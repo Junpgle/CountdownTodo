@@ -412,7 +412,17 @@ abstract class _StorageServiceBase {
   Future<void> _refreshTodoScheduleConflicts(
     String username, {
     Set<String>? affectedDayKeys,
+    Set<String>? affectedTodoIds,
   });
+  bool _requiresScheduleConflictRefresh(
+    TodoItem item,
+    Map<String, dynamic>? previousData,
+  );
+  Set<String> _scheduleConflictDayKeysFor(
+    TodoItem item, {
+    Map<String, dynamic>? previousData,
+  });
+  Set<String> _scheduleConflictDayKeysForRow(Map<String, dynamic> row);
   Future<Map<String, int>> scanAllTodoConflicts(String username);
   Future<void> clearLocalTodoScheduleConflicts(String username);
   Future<void> ignoreLocalScheduleConflict(String username, TodoItem item);
@@ -850,6 +860,16 @@ abstract class _StorageServiceBase {
     bool createOplog = false,
     bool touchUpdatedAt = true,
   });
+  Future<void> _prepareSyncUploadPayload(_SyncRunContext ctx);
+  Future<void> _executeSyncNetworkRound(_SyncRunContext ctx);
+  Future<void> _mergeServerSyncResponse(_SyncRunContext ctx);
+  Future<void> _persistSyncMergeResults(_SyncRunContext ctx);
+  Future<void> _finalizeSyncWatermarksAndNotify(_SyncRunContext ctx);
+  Future<Set<String>> _autoResolveEquivalentHabitConflicts({
+    required List<HabitGoal> goals,
+    required List<HabitGoalRuleRevision> rules,
+    required Map<String, Map<String, dynamic>> snapshots,
+  });
 }
 
 class _StorageServiceImpl extends _StorageServiceBase
@@ -857,7 +877,15 @@ class _StorageServiceImpl extends _StorageServiceBase
         _StorageFixed,
         _StorageCore,
         _StorageTodos,
+        _StorageTodoConflicts,
+        _StorageTodoQueries,
+        _StorageTodoRecurrence,
+        _StorageScreenTime,
         _StorageSync,
+        _StorageSyncPrepare,
+        _StorageSyncNetwork,
+        _StorageSyncMerge,
+        _StorageSyncPersist,
         _StorageConflict,
         _StorageSettings {}
 

@@ -1,24 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
-
-String? _teamGanttDateLocale;
-DateFormat? _teamGanttDayLabelFormat;
+import '../utils/time_utils.dart';
 
 final _invalidUtf16SurrogatePattern = RegExp(
   r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]',
 );
-
-DateFormat _teamGanttDayFormat() {
-  final locale = Intl.defaultLocale;
-  if (_teamGanttDateLocale != locale) {
-    _teamGanttDateLocale = locale;
-    _teamGanttDayLabelFormat = DateFormat('dd', locale);
-  }
-  return _teamGanttDayLabelFormat ??= DateFormat('dd', locale);
-}
 
 class TeamGanttWidget extends StatefulWidget {
   final List<TodoItem> todos;
@@ -98,7 +86,7 @@ class _TeamGanttWidgetState extends State<TeamGanttWidget> {
     final totalDays = CalendarDateMath.daysBetween(timelineStart, timelineEnd);
     const timelineWidth = 800.0;
     const horizontalPadding = 16.0;
-    final dayLabelFormat = _teamGanttDayFormat();
+    final dayLabelFormat = AppTimeFormats.dateFormatter('dd');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,10 +128,7 @@ class _TeamGanttWidgetState extends State<TeamGanttWidget> {
                 Row(
                   children: List.generate(totalDays, (i) {
                     final date = CalendarDateMath.addDays(timelineStart, i);
-                    final isToday =
-                        date.year == now.year &&
-                        date.month == now.month &&
-                        date.day == now.day;
+                    final isToday = AppTimeFormats.isSameDay(date, now);
                     return Container(
                       width: timelineWidth / totalDays,
                       alignment: Alignment.center,

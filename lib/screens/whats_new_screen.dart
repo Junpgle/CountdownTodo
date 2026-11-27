@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../update_service.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/changelog_bullet_item.dart';
 import 'help/feature_explorer_screen.dart';
 import 'home_dashboard.dart';
@@ -204,7 +205,11 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
         ),
         const SizedBox(height: 16),
         if (_loading)
-          const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          const AppSkeletonDocument(
+            paragraphs: 3,
+            shrinkWrap: true,
+            padding: EdgeInsets.symmetric(vertical: 8),
+          )
         else if (_fetchFailed)
           _buildOfflineNotice(scheme)
         else if (_changelogHistory.isEmpty)

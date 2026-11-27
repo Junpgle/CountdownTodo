@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../storage_service.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 import '../../utils/app_dialogs.dart';
+import '../../utils/time_utils.dart';
 
 class GreetingTimeSlot {
   String id;
@@ -28,7 +29,7 @@ class GreetingTimeSlot {
   }
 
   String _formatTime(int hour, int minute) {
-    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(hour, minute);
   }
 
   bool get isCrossDay {
@@ -80,7 +81,7 @@ class SalutationTimeSlot {
   }
 
   String _formatTime(int hour, int minute) {
-    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(hour, minute);
   }
 
   bool get isCrossDay {
@@ -477,18 +478,34 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: const Text('首页文字自定义'),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     final isWideScreen = MediaQuery.sizeOf(context).width > 768;
     final standalone = !widget.isEmbedded && !isWideScreen;
+
+    if (_isLoading) {
+      return Scaffold(
+        extendBodyBehindAppBar: standalone,
+        appBar: widget.isEmbedded
+            ? null
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
+                title: const Text('首页文字自定义'),
+              ),
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: standalone,
+          child: AppSkeletonFormPage(
+            topPadding: standalone
+                ? floatingGlassSettingsContentTopInset(context)
+                : 16,
+            maxWidth: null,
+            fieldCount: 4,
+            twoColumnOnWide: true,
+            showPreviewHeaderOnWide: true,
+            wideBreakpoint: 768,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       extendBodyBehindAppBar: standalone,
@@ -764,10 +781,11 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Text(
-                    DateFormat(
+                    AppTimeFormats.format(
+                      DateTime.now(),
                       _selectedDateFormat,
-                      'zh_CN',
-                    ).format(DateTime.now()),
+                      locale: 'zh_CN',
+                    ),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,
@@ -1313,7 +1331,7 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
   }
 
   String _formatTime(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(time.hour, time.minute);
   }
 
   Future<void> _pickTime(bool isStart) async {
@@ -1469,7 +1487,7 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
   }
 
   String _formatTime(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(time.hour, time.minute);
   }
 
   Future<void> _pickTime(bool isStart) async {

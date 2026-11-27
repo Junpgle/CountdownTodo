@@ -556,10 +556,9 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
     final todo = widget.todo;
     final colorScheme = Theme.of(context).colorScheme;
 
-    DateTime startTime = DateTime.fromMillisecondsSinceEpoch(
+    DateTime startTime = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
 
     DateTime? endTime = todo.dueDate;
 
@@ -778,19 +777,14 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
               icon: Icons.update_rounded,
               title: "最近更新",
               value: AppTimeFormats.format(
-                DateTime.fromMillisecondsSinceEpoch(
-                  todo.updatedAt,
-                  isUtc: true,
-                ).toLocal(),
+                AppTimeFormats.localFromServerTimestamp(todo.updatedAt),
                 'yyyy-MM-dd HH:mm:ss',
               ),
             ),
             AppDetailWideCard(
               icon: Icons.fingerprint_rounded,
               title: "任务 ID",
-              value: todo.id.length > 8
-                  ? "${todo.id.substring(0, 8)}..."
-                  : todo.id,
+              value: AppTextUtils.truncate(todo.id, 8, ellipsis: '...'),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: todo.id));
                 AppSnackBars.success(context, "ID 已复制到剪贴板");
@@ -903,10 +897,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
 
   Widget _buildFocusRecordVisualized(PomodoroRecord r, int maxDuration) {
     final colorScheme = Theme.of(context).colorScheme;
-    final startLocal = DateTime.fromMillisecondsSinceEpoch(
-      r.startTime,
-      isUtc: true,
-    ).toLocal();
+    final startLocal = AppTimeFormats.localFromServerTimestamp(r.startTime);
     final durationMin = r.effectiveDuration ~/ 60;
 
     final safeMax = maxDuration > 0 ? maxDuration : 1;
@@ -1013,14 +1004,8 @@ class TimeLogDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    DateTime start = DateTime.fromMillisecondsSinceEpoch(
-      log.startTime,
-      isUtc: true,
-    ).toLocal();
-    DateTime end = DateTime.fromMillisecondsSinceEpoch(
-      log.endTime,
-      isUtc: true,
-    ).toLocal();
+    DateTime start = AppTimeFormats.localFromServerTimestamp(log.startTime);
+    DateTime end = AppTimeFormats.localFromServerTimestamp(log.endTime);
     int durationMin = (log.endTime - log.startTime) ~/ 60000;
 
     Color logColor = colorScheme.primary;
@@ -1111,10 +1096,7 @@ class TimeLogDetailScreen extends StatelessWidget {
               icon: Icons.update,
               title: '最近更新',
               value: AppTimeFormats.fullDateTime(
-                DateTime.fromMillisecondsSinceEpoch(
-                  log.updatedAt,
-                  isUtc: true,
-                ).toLocal(),
+                AppTimeFormats.localFromServerTimestamp(log.updatedAt),
               ),
             ),
           ],
@@ -1136,16 +1118,10 @@ class PomodoroDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    DateTime start = DateTime.fromMillisecondsSinceEpoch(
-      record.startTime,
-      isUtc: true,
-    ).toLocal();
+    DateTime start = AppTimeFormats.localFromServerTimestamp(record.startTime);
     int endMs =
         record.endTime ?? (record.startTime + record.effectiveDuration * 1000);
-    DateTime end = DateTime.fromMillisecondsSinceEpoch(
-      endMs,
-      isUtc: true,
-    ).toLocal();
+    DateTime end = AppTimeFormats.localFromServerTimestamp(endMs);
     Color pomColor = colorScheme.cdtFocus;
     String tagInfo = '无标签';
     if (record.tagUuids.isNotEmpty) {
@@ -1370,10 +1346,7 @@ class PomodoroDetailScreen extends StatelessWidget {
               icon: Icons.update,
               title: '最近更新',
               value: AppTimeFormats.fullDateTime(
-                DateTime.fromMillisecondsSinceEpoch(
-                  record.updatedAt,
-                  isUtc: true,
-                ).toLocal(),
+                AppTimeFormats.localFromServerTimestamp(record.updatedAt),
               ),
             ),
           ],
@@ -1582,10 +1555,7 @@ class _PomodoroTagDetailScreenState extends State<PomodoroTagDetailScreen> {
 
   Widget _buildFocusRecordVisualized(PomodoroRecord r, int maxDuration) {
     final colorScheme = Theme.of(context).colorScheme;
-    final startLocal = DateTime.fromMillisecondsSinceEpoch(
-      r.startTime,
-      isUtc: true,
-    ).toLocal();
+    final startLocal = AppTimeFormats.localFromServerTimestamp(r.startTime);
     final durationMin = r.effectiveDuration ~/ 60;
 
     final safeMax = maxDuration > 0 ? maxDuration : 1;

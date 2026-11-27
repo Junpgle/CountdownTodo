@@ -685,10 +685,7 @@ mixin _StorageConflict on _StorageServiceBase {
   String? _remoteRecurrencePlanSignature(TodoItem todo) {
     final startMs = todo.createdDate;
     if (startMs == null || startMs <= 0) return null;
-    final start = DateTime.fromMillisecondsSinceEpoch(
-      startMs,
-      isUtc: true,
-    ).toLocal();
+    final start = AppTimeFormats.localFromServerTimestamp(startMs);
     final dueMs = todo.dueDate?.millisecondsSinceEpoch;
     final durationMs = dueMs == null ? null : dueMs - startMs;
     if (durationMs != null && durationMs < 0) return null;
@@ -723,20 +720,12 @@ mixin _StorageConflict on _StorageServiceBase {
     final candidateStartMs = candidate.createdDate;
     if (ruleStartMs == null || candidateStartMs == null) return false;
 
-    final ruleStart = DateTime.fromMillisecondsSinceEpoch(
-      ruleStartMs,
-      isUtc: true,
-    ).toLocal();
-    final candidateStart = DateTime.fromMillisecondsSinceEpoch(
+    final ruleStart = AppTimeFormats.localFromServerTimestamp(ruleStartMs);
+    final candidateStart = AppTimeFormats.localFromServerTimestamp(
       candidateStartMs,
-      isUtc: true,
-    ).toLocal();
-    final ruleDay = DateTime(ruleStart.year, ruleStart.month, ruleStart.day);
-    final candidateDay = DateTime(
-      candidateStart.year,
-      candidateStart.month,
-      candidateStart.day,
     );
+    final ruleDay = CalendarDateMath.dateOnly(ruleStart);
+    final candidateDay = CalendarDateMath.dateOnly(candidateStart);
     if (ruleSource.recurrence == RecurrenceType.weekdays &&
         (candidateDay.weekday == DateTime.saturday ||
             candidateDay.weekday == DateTime.sunday)) {
@@ -744,11 +733,7 @@ mixin _StorageConflict on _StorageServiceBase {
     }
     final recurrenceEnd = ruleSource.recurrenceEndDate;
     if (recurrenceEnd != null) {
-      final endDay = DateTime(
-        recurrenceEnd.year,
-        recurrenceEnd.month,
-        recurrenceEnd.day,
-      );
+      final endDay = CalendarDateMath.dateOnly(recurrenceEnd);
       if (candidateDay.isAfter(endDay)) return false;
     }
     if (candidateDay == ruleDay) return true;
@@ -758,7 +743,7 @@ mixin _StorageConflict on _StorageServiceBase {
     for (var i = 0; i < 500; i++) {
       final next = _nextRecurrenceDate(cursor, ruleSource);
       if (next == null || !next.isAfter(cursor)) return false;
-      final nextDay = DateTime(next.year, next.month, next.day);
+      final nextDay = CalendarDateMath.dateOnly(next);
       if (nextDay == target) return true;
       if (nextDay.isAfter(target)) return false;
       cursor = next;
@@ -784,7 +769,6 @@ mixin _StorageConflict on _StorageServiceBase {
   }
 
   String _localDayKey(int ms) {
-    return DateFormat('yyyy-MM-dd')
-        .format(DateTime.fromMillisecondsSinceEpoch(ms));
+    return AppTimeFormats.date(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 }

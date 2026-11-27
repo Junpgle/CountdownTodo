@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../services/conflict_visibility_service.dart';
 import '../../../storage_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/text_utils.dart';
+import '../../../utils/time_utils.dart';
 
 class RecurrenceSeriesMergePage extends StatefulWidget {
   final String username;
@@ -136,29 +139,17 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
       return;
     }
     final target = _series.where((summary) => summary.id == targetId).first;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('合并重复待办'),
-        content: Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '合并重复待办',
+      message:
           '将 ${_selectedSeriesIds.length} 个系列合并为一个，并保留“${target.title}”所在系列为主系列。\n\n'
           '每期待办的独立 ID、完成状态、规划、专注记录和时间日志都会保留。同一天的重复实例会自动去重。\n\n'
           '主系列现有的重复规则优先保留。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.merge_type_rounded),
-            label: const Text('确认合并'),
-          ),
-        ],
-      ),
+      confirmLabel: '确认合并',
+      confirmIcon: const Icon(Icons.merge_type_rounded),
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _isMerging = true);
     try {
@@ -213,7 +204,13 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
         context,
         standalone: !widget.isEmbedded,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: widget.isEmbedded
+                    ? 16
+                    : floatingGlassSettingsContentTopInset(context),
+                itemCount: 4,
+                itemHeight: 96,
+              )
             : Column(
                 children: [
                   Padding(
@@ -456,21 +453,15 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
   }
 
   static String _formatRange(_RecurrenceSeriesSummary summary) {
-    final first = DateTime.fromMillisecondsSinceEpoch(
-      summary.firstStart,
-      isUtc: true,
-    ).toLocal();
-    final last = DateTime.fromMillisecondsSinceEpoch(
-      summary.lastStart,
-      isUtc: true,
-    ).toLocal();
+    final first = AppTimeFormats.localFromServerTimestamp(summary.firstStart);
+    final last = AppTimeFormats.localFromServerTimestamp(summary.lastStart);
     final firstText = '${first.month}/${first.day}';
     final lastText = '${last.month}/${last.day}';
     return firstText == lastText ? firstText : '$firstText–$lastText';
   }
 
   static String _shortSeriesId(String seriesId) =>
-      seriesId.length <= 8 ? seriesId : '${seriesId.substring(0, 8)}…';
+      AppTextUtils.truncate(seriesId, 8);
 }
 
 class _RecurrenceSeriesSummary {

@@ -55,19 +55,25 @@ class AppLoadingView extends StatelessWidget {
 
 class AppEmptyState extends StatelessWidget {
   final IconData icon;
+  final double iconSize;
+  final Color? iconColor;
   final String title;
   final String? message;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final Widget? action;
   final EdgeInsetsGeometry padding;
 
   const AppEmptyState({
     super.key,
     this.icon = Icons.inbox_outlined,
+    this.iconSize = 56,
+    this.iconColor,
     required this.title,
     this.message,
     this.actionLabel,
     this.onAction,
+    this.action,
     this.padding = const EdgeInsets.all(32),
   });
 
@@ -82,8 +88,10 @@ class AppEmptyState extends StatelessWidget {
           children: [
             Icon(
               icon,
-              size: 56,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+              size: iconSize,
+              color:
+                  iconColor ??
+                  colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
             ),
             const SizedBox(height: 16),
             Text(
@@ -103,7 +111,10 @@ class AppEmptyState extends StatelessWidget {
                     ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
-            if (actionLabel != null && onAction != null) ...[
+            if (action != null) ...[
+              const SizedBox(height: 16),
+              action!,
+            ] else if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 20),
               FilledButton(onPressed: onAction, child: Text(actionLabel!)),
             ],

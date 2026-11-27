@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/time_utils.dart';
+
 import '../models/habit_goal.dart';
 import '../services/habit_calendar_light_up_service.dart';
 import '../services/habit_drink_log_service.dart';
@@ -114,9 +116,8 @@ class _HabitCalendarLightUpSheetState extends State<HabitCalendarLightUpSheet> {
         widget.date.year == now.year &&
         widget.date.month == now.month &&
         widget.date.day == now.day;
-    final weekdayChar = '一二三四五六日'[widget.date.weekday - 1];
     final dateTitle =
-        '${widget.date.month} 月 ${widget.date.day} 日 · 周$weekdayChar';
+        '${widget.date.month} 月 ${widget.date.day} 日 · ${AppTimeFormats.weekdayLabel(widget.date)}';
     final litIcons = <String>[];
     for (final goal in widget.goals) {
       if (_litStates[goal.uuid] != true) continue;

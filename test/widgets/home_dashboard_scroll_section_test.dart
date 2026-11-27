@@ -109,4 +109,74 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'SliverCrossAxisGroup lazily defers building far offscreen dashboard sections',
+    (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      final builtIds = <String>{};
+
+      Widget buildCard(String id) {
+        return HomeDashboardScrollSection(
+          key: ValueKey<String>(id),
+          keepAlive: true,
+          child: Builder(
+            builder: (context) {
+              builtIds.add(id);
+              return const SizedBox(height: 500);
+            },
+          ),
+        );
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 1100,
+            height: 600,
+            child: CustomScrollView(
+              controller: controller,
+              slivers: [
+                SliverCrossAxisGroup(
+                  slivers: [
+                    SliverCrossAxisExpanded(
+                      flex: 10,
+                      sliver: SliverList.builder(
+                        itemCount: 6,
+                        itemBuilder: (context, index) =>
+                            buildCard('left-$index'),
+                      ),
+                    ),
+                    const SliverConstrainedCrossAxis(
+                      maxExtent: 40,
+                      sliver: SliverToBoxAdapter(child: SizedBox.shrink()),
+                    ),
+                    SliverCrossAxisExpanded(
+                      flex: 11,
+                      sliver: SliverList.builder(
+                        itemCount: 6,
+                        itemBuilder: (context, index) =>
+                            buildCard('right-$index'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(builtIds, contains('left-0'));
+      expect(builtIds, contains('right-0'));
+      expect(builtIds, isNot(contains('left-5')));
+      expect(builtIds, isNot(contains('right-5')));
+
+      controller.jumpTo(2600);
+      await tester.pump();
+      expect(builtIds, contains('left-5'));
+      expect(builtIds, contains('right-5'));
+    },
+  );
 }

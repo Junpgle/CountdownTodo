@@ -1,5 +1,6 @@
 import 'package:countdown_todo/screens/home_dashboard.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -175,4 +176,79 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'pinned header bodyListenableBuilder preserves child state across extent changes',
+    (tester) async {
+      final headerHeight = ValueNotifier<double>(120);
+      addTearDown(headerHeight.dispose);
+      var bodyBuilds = 0;
+      double? reportedExtent;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FloatingGlassPinnedHeaderLayout(
+              initialHeaderExtent: 120,
+              fadeContent: true,
+              onHeaderExtentChanged: (extent) => reportedExtent = extent,
+              header: ValueListenableBuilder<double>(
+                valueListenable: headerHeight,
+                builder: (_, height, _) =>
+                    SizedBox(height: height, width: double.infinity),
+              ),
+              bodyListenableBuilder: (context, extentListenable) {
+                bodyBuilds++;
+                return _ExtentEchoBody(extentListenable: extentListenable);
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(bodyBuilds, 1);
+      expect(find.text('extent=120.0'), findsOneWidget);
+
+      headerHeight.value = 0;
+      await tester.pump();
+      await tester.pump();
+      expect(bodyBuilds, 1);
+      expect(reportedExtent, 0.0);
+      expect(find.text('extent=0.0'), findsOneWidget);
+      expect(find.text('Dashboard mounted'), findsOneWidget);
+
+      headerHeight.value = 120;
+      await tester.pump();
+      await tester.pump();
+      expect(bodyBuilds, 1);
+      expect(reportedExtent, 120.0);
+      expect(find.text('extent=120.0'), findsOneWidget);
+      expect(find.text('Dashboard mounted'), findsOneWidget);
+    },
+  );
+}
+
+class _ExtentEchoBody extends StatefulWidget {
+  const _ExtentEchoBody({required this.extentListenable});
+
+  final ValueListenable<double> extentListenable;
+
+  @override
+  State<_ExtentEchoBody> createState() => _ExtentEchoBodyState();
+}
+
+class _ExtentEchoBodyState extends State<_ExtentEchoBody> {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const Text('Dashboard mounted'),
+        ValueListenableBuilder<double>(
+          valueListenable: widget.extentListenable,
+          builder: (_, extent, _) =>
+              Text('extent=${extent.toStringAsFixed(1)}'),
+        ),
+      ],
+    );
+  }
 }

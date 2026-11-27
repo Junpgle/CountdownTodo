@@ -113,7 +113,7 @@ class TimeEstimationService {
   static final _englishWord = RegExp('[a-z]+');
 
   // Complexity keyword dictionaries
-  static const _highComplexityKeywords = [
+  static const List<String> highComplexityKeywords = [
     '复杂',
     '项目',
     '设计',
@@ -145,7 +145,7 @@ class TimeEstimationService {
     '仿真',
   ];
 
-  static const _mediumComplexityKeywords = [
+  static const List<String> mediumComplexityKeywords = [
     '学习',
     '练习',
     '复习',
@@ -168,7 +168,7 @@ class TimeEstimationService {
     '课程',
   ];
 
-  static const _lowComplexityKeywords = [
+  static const List<String> lowComplexityKeywords = [
     '购买',
     '打印',
     '发送',
@@ -477,9 +477,9 @@ class TimeEstimationService {
     String reason;
 
     final lowerTitle = title.toLowerCase();
-    bool isHigh = _highComplexityKeywords.any((kw) => lowerTitle.contains(kw));
-    bool isMed = _mediumComplexityKeywords.any((kw) => lowerTitle.contains(kw));
-    bool isLow = _lowComplexityKeywords.any((kw) => lowerTitle.contains(kw));
+    bool isHigh = highComplexityKeywords.any((kw) => lowerTitle.contains(kw));
+    bool isMed = mediumComplexityKeywords.any((kw) => lowerTitle.contains(kw));
+    bool isLow = lowComplexityKeywords.any((kw) => lowerTitle.contains(kw));
 
     if (isHigh) {
       base = 60;

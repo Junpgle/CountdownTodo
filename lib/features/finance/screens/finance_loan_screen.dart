@@ -1,16 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_loan_payment_dialog.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_loan_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 const _maxOverdueRefreshDelay = Duration(days: 24);
 
@@ -22,7 +23,7 @@ DateTime? _nextOverdueBoundary(
   for (final installment in installments) {
     if (installment.isPaid) continue;
     final dueDate = dateFromKey(installment.dueDate);
-    final boundary = DateTime(dueDate.year, dueDate.month, dueDate.day + 1);
+    final boundary = AppTimeFormats.localDayStartOffset(dueDate, 1);
     if (boundary.isAfter(now) &&
         (nextBoundary == null || boundary.isBefore(nextBoundary))) {
       nextBoundary = boundary;
@@ -41,7 +42,12 @@ class FinanceLoanScreen extends StatefulWidget {
 }
 
 class _FinanceLoanScreenState extends State<FinanceLoanScreen>
-    with WidgetsBindingObserver {
+    with
+        WidgetsBindingObserver,
+        FinanceRevisionRefreshMixin<FinanceLoanScreen> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   List<FinanceLoanOverview> _overviews = const [];
   bool? _paidOffFilter;
   bool _isLoading = true;
@@ -53,7 +59,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
@@ -61,7 +67,6 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   void dispose() {
     _overdueRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
@@ -91,7 +96,8 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
     });
   }
 
-  void _onFinanceChanged() => _load(showLoading: false);
+  @override
+  void onFinanceRevisionRefresh() => _load(showLoading: false);
 
   String _displayName(FinanceLoan loan) =>
       financeLoanDisplayName(loan, _overviews.map((overview) => overview.loan));
@@ -153,27 +159,15 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
 
   Future<void> _deleteLoan(FinanceLoan loan) async {
     final displayName = _displayName(loan);
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除“$displayName”？'),
-        content: const Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除“$displayName”？',
+      message:
           '贷款和还款计划会进入记账回收站，已发生的还款扣款和利息账单会保留。'
           '如需恢复余额，请先撤销对应还款。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+      confirmLabel: '删除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await FinanceRepository.deleteLoan(loan.uuid);
       if (!mounted) return;
@@ -334,7 +328,14 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   }
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) {
+      return AppSkeletonListPage(
+        topPadding: topPadding,
+        showHeroCard: true,
+        itemCount: 4,
+        itemHeight: 88,
+      );
+    }
     if (_loadError != null) {
       return FinancePageList(
         topPadding: topPadding,
@@ -493,25 +494,21 @@ class FinanceLoanDetailScreen extends StatefulWidget {
 }
 
 class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
-    with WidgetsBindingObserver {
+    with
+        WidgetsBindingObserver,
+        FinanceRevisionRefreshMixin<FinanceLoanDetailScreen> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   FinanceLoan? _loan;
   List<FinanceLoanInstallment> _installments = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   bool? _paidFilter;
   final _updating = <String>{};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _overdueRefreshTimer;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   FinanceLoan get _currentLoan => _loan ?? widget.loan;
 
@@ -519,7 +516,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
@@ -527,7 +524,6 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   void dispose() {
     _overdueRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
@@ -554,7 +550,8 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
     });
   }
 
-  void _onFinanceChanged() => _load(showLoading: false);
+  @override
+  void onFinanceRevisionRefresh() => _load(showLoading: false);
 
   Future<void> _load({bool showLoading = true}) async {
     final generation = ++_loadGeneration;
@@ -754,7 +751,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
     final paidAt = installment.paidAt;
     final paidDateFormat = paidAt == null
         ? null
-        : _cachedDateFormat('yyyy年M月d日 HH:mm');
+        : AppTimeFormats.dateFormatter('yyyy年M月d日 HH:mm');
     return FinanceSectionCard(
       key: ValueKey('finance-loan-installment-${installment.uuid}'),
       child: Column(
@@ -878,7 +875,14 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   }
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) {
+      return AppSkeletonListPage(
+        topPadding: topPadding,
+        showHeroCard: true,
+        itemCount: 4,
+        itemHeight: 88,
+      );
+    }
     if (_loadError != null) {
       return FinancePageList(
         topPadding: topPadding,

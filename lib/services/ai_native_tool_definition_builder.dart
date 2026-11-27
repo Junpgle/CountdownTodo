@@ -913,21 +913,16 @@ class AiNativeToolDefinitionBuilder {
     String previousAssistantMessage = '',
   }) {
     final message = userMessage.trim();
-    final isAssent = RegExp(
-      r'^(?:可以|好|好的|好啊|行|嗯|嗯嗯|确认|确定|继续|开始吧|生成吧|要的|需要|是的|就这样|按这个来|照这个安排)[！!。\.\s]*$',
-    ).hasMatch(message);
-    final planning = RegExp(r'规划|计划块|时间块|plan\s*block', caseSensitive: false);
+    final isAssent = _rxAiNativeToolDef1.hasMatch(message);
+    final planning = _rxAiNativeToolDef2;
     if (planning.hasMatch(message) && !isMissingActionCardReport(message)) {
       return message;
     }
     final isPlanningDetail =
-        RegExp(r'^(?:避开|排除|到|截止|截至|从|可以联排|联排|连排|先|把|加上|也加|不要安排)')
-            .hasMatch(message) &&
-        RegExp(r'时间|晚餐|午餐|点|时|分钟|联排|连排|问卷|加上').hasMatch(message);
-    final isSchedulingRequest = RegExp(r'(?:我要|帮我|请).*(?:安排|排一下)')
-        .hasMatch(message);
-    final isTaskDescription = RegExp(r'我(?:打算|准备|想|要).*(?:做|学|复习|安排)')
-        .hasMatch(message);
+        _rxAiNativeToolDef3.hasMatch(message) &&
+        _rxAiNativeToolDef4.hasMatch(message);
+    final isSchedulingRequest = _rxAiNativeToolDef5.hasMatch(message);
+    final isTaskDescription = _rxAiNativeToolDef6.hasMatch(message);
     if (!isAssent &&
         !isPlanningDetail &&
         !isSchedulingRequest &&
@@ -941,8 +936,7 @@ class AiNativeToolDefinitionBuilder {
             .contains('create_plan_block');
     final offeredPlanning =
         planning.hasMatch(previousAssistantMessage) &&
-        RegExp(r'方案|草案|时段|生成|安排|要不要|是否需要|需要我')
-            .hasMatch(previousAssistantMessage);
+        _rxAiNativeToolDef7.hasMatch(previousAssistantMessage);
     if (!previousPlanningRequest && !offeredPlanning) {
       return message;
     }
@@ -982,10 +976,7 @@ class AiNativeToolDefinitionBuilder {
     ])) {
       return userMessage;
     }
-    final confirmation = userMessage.trim().replaceAll(
-      RegExp(r'[\s，。！？,.!?]'),
-      '',
-    );
+    final confirmation = userMessage.trim().replaceAll(_rxAiNativeToolDef8, '');
     if (const {
       '好',
       '好的',
@@ -998,16 +989,16 @@ class AiNativeToolDefinitionBuilder {
     }.contains(confirmation)) {
       return userMessage;
     }
-    if (RegExp(r'待确认|确认卡|编辑并保存|已经生成.{0,8}(?:账单|记账)').hasMatch(assistantReply)) {
+    if (_rxAiNativeToolDef9.hasMatch(assistantReply)) {
       return userMessage;
     }
 
     final isFinanceWriteRequest =
         AiTodoContextBuilder.isExplicitFinanceDraftRequest(previousRequest) ||
         AiTodoContextBuilder.hasExplicitFinanceUpdateIntent(previousRequest);
-    final assistantRequestsDetails = RegExp(
-      r'请提供|请补充|请告诉|告诉我|还需要|还差|缺少|哪一笔|哪一个|哪天|哪一天|什么时间|多少元|具体.{0,12}(?:金额|日期|账单|分类|商家|支付方式)',
-    ).hasMatch(assistantReply);
+    final assistantRequestsDetails = _rxAiNativeToolDef10.hasMatch(
+      assistantReply,
+    );
     if (!isFinanceWriteRequest || !assistantRequestsDetails) return userMessage;
 
     return '$previousRequest\n$userMessage';
@@ -1059,9 +1050,9 @@ class AiNativeToolDefinitionBuilder {
     for (final line in text.split('\n')) {
       final bullet = line.trim();
       if (!bullet.startsWith('- ')) continue;
-      final actionLabel = bullet.substring(2).split(RegExp(r'[:：]')).first;
+      final actionLabel = bullet.substring(2).split(_rxAiNativeToolDef11).first;
       actions.addAll(
-        RegExp(r'[A-Za-z_][A-Za-z0-9_]*')
+        _rxAiNativeToolDef12
             .allMatches(actionLabel)
             .map((match) => match.group(0)!),
       );
@@ -1110,3 +1101,26 @@ class AiNativeToolDefinitionBuilder {
     return keywords.any((keyword) => text.contains(keyword));
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiNativeToolDef1 = RegExp(
+  r'^(?:可以|好|好的|好啊|行|嗯|嗯嗯|确认|确定|继续|开始吧|生成吧|要的|需要|是的|就这样|按这个来|照这个安排)[！!。\.\s]*$',
+);
+final RegExp _rxAiNativeToolDef2 = RegExp(
+  r'规划|计划块|时间块|plan\s*block',
+  caseSensitive: false,
+);
+final RegExp _rxAiNativeToolDef3 = RegExp(
+  r'^(?:避开|排除|到|截止|截至|从|可以联排|联排|连排|先|把|加上|也加|不要安排)',
+);
+final RegExp _rxAiNativeToolDef4 = RegExp(r'时间|晚餐|午餐|点|时|分钟|联排|连排|问卷|加上');
+final RegExp _rxAiNativeToolDef5 = RegExp(r'(?:我要|帮我|请).*(?:安排|排一下)');
+final RegExp _rxAiNativeToolDef6 = RegExp(r'我(?:打算|准备|想|要).*(?:做|学|复习|安排)');
+final RegExp _rxAiNativeToolDef7 = RegExp(r'方案|草案|时段|生成|安排|要不要|是否需要|需要我');
+final RegExp _rxAiNativeToolDef8 = RegExp(r'[\s，。！？,.!?]');
+final RegExp _rxAiNativeToolDef9 = RegExp(r'待确认|确认卡|编辑并保存|已经生成.{0,8}(?:账单|记账)');
+final RegExp _rxAiNativeToolDef10 = RegExp(
+  r'请提供|请补充|请告诉|告诉我|还需要|还差|缺少|哪一笔|哪一个|哪天|哪一天|什么时间|多少元|具体.{0,12}(?:金额|日期|账单|分类|商家|支付方式)',
+);
+final RegExp _rxAiNativeToolDef11 = RegExp(r'[:：]');
+final RegExp _rxAiNativeToolDef12 = RegExp(r'[A-Za-z_][A-Za-z0-9_]*');

@@ -2,22 +2,30 @@ import 'package:flutter/material.dart';
 
 class AppSheetDragHandle extends StatelessWidget {
   final EdgeInsetsGeometry margin;
+  final double width;
+  final double height;
+  final BorderRadiusGeometry? borderRadius;
+  final Color? color;
 
   const AppSheetDragHandle({
     super.key,
     this.margin = const EdgeInsets.only(top: 12, bottom: 4),
+    this.width = 40,
+    this.height = 4,
+    this.borderRadius,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      width: 40,
-      height: 4,
+      width: width,
+      height: height,
       margin: margin,
       decoration: BoxDecoration(
-        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(2),
+        color: color ?? colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+        borderRadius: borderRadius ?? BorderRadius.circular(2),
       ),
     );
   }

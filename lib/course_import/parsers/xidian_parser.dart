@@ -16,7 +16,7 @@ class XidianScheduleParser {
     final normalizedIcs = icsString
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
-        .replaceAll(RegExp(r'\n[ \t]'), '');
+        .replaceAll(_rxCached1_1, '');
     List<String> lines = normalizedIcs.split('\n');
 
     String? summary;
@@ -141,3 +141,6 @@ class XidianScheduleParser {
     return null;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached1_1 = RegExp(r'\n[ \t]');

@@ -3,13 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/reminder_schedule_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_automation_editor.dart';
 import '../widgets/finance_automation_manager.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -22,7 +23,8 @@ class FinanceAutomationScreen extends StatefulWidget {
       _FinanceAutomationScreenState();
 }
 
-class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
+class _FinanceAutomationScreenState extends State<FinanceAutomationScreen>
+    with FinanceRevisionRefreshMixin<FinanceAutomationScreen> {
   List<FinanceRecurringRule> _rules = const [];
   List<FinanceEntryTemplate> _templates = const [];
   List<FinanceCategory> _categories = const [];
@@ -30,29 +32,16 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
-  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
-  void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
-    super.dispose();
-  }
-
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_load());
-    });
-  }
+  void onFinanceRevisionRefresh() => unawaited(_load());
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
@@ -152,25 +141,13 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
     await _load();
   }
 
-  Future<bool> _confirm(String title, String message) async {
-    return await showAppDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('删除'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+  Future<bool> _confirm(String title, String message) {
+    return AppDialogs.confirm(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: '删除',
+    );
   }
 
   @override
@@ -192,7 +169,11 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 4,
+                itemHeight: 88,
+              )
             : _loadError != null
             ? FinancePageList(
                 topPadding: topBarHeight,

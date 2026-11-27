@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models.dart';
 import '../models/ai_todo_action.dart';
@@ -39,10 +38,12 @@ import '../services/todo_recurrence_series_edit_service.dart';
 import '../services/ai_plan_draft_repository.dart';
 import '../services/llm_service.dart';
 import '../services/minor_mode_policy.dart';
+import '../utils/text_utils.dart';
 import '../services/minor_mode_service.dart';
 import '../services/ai_memory_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/ai_recognition_chat_bridge.dart';
+import '../services/ai_tool_chat/ai_cdt_action_labels.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
 import 'pomodoro/pomodoro_entry_intent.dart';
@@ -77,28 +78,25 @@ import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_ai_context_service.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';
 part 'todo_chat_screen_send.dart';
+part 'todo_chat_screen_send_fallback.dart';
+part 'todo_chat_screen_send_attachments.dart';
+part 'todo_chat_screen_send_manual.dart';
 part 'todo_chat_screen_queries.dart';
 part 'todo_chat_screen_layout.dart';
 part 'todo_chat_screen_actions.dart';
+part 'todo_chat_screen_actions_finance.dart';
+part 'todo_chat_screen_actions_editor.dart';
+part 'todo_chat_screen_actions_execution.dart';
 part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
-final Map<(String?, String), DateFormat> _todoChatDateFormats = {};
-
-DateFormat _todoChatDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _todoChatDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
 String _formatTodoChatDateRange(DateTime start, DateTime end) {
-  final dateFormat = _todoChatDateFormat('yyyy-MM-dd');
+  final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
   final startText = dateFormat.format(start);
   final endText = dateFormat.format(end);
   return '自定义范围: $startText 至 $endText';
@@ -181,7 +179,13 @@ class _TodoChatScreenState extends _TodoChatScreenStateBase
     with
         _TodoChatLifecycle,
         _TodoChatSend,
+        _TodoChatSendFallback,
+        _TodoChatSendAttachments,
+        _TodoChatSendManual,
         _TodoChatQueries,
         _TodoChatLayout,
         _TodoChatActions,
+        _TodoChatFinanceActions,
+        _TodoChatActionEditor,
+        _TodoChatActionExecution,
         _TodoChatMessages {}

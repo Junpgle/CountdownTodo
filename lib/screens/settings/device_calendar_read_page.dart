@@ -2,33 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../../services/device_calendar_read_service.dart';
 import '../../utils/app_platform.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
 
 Future<bool> showDeviceCalendarReadOnlyConfirmation(
   BuildContext context,
 ) async {
-  return await showAppDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('读取手机日历？'),
-          content: const Text(
-            '只会在本机前台读取日程，用于首页、周视图和半月/月视图展示。'
-            '不会写入系统日历，不会导入为待办，也不会上传或参与任何同步。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('继续'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
+  return AppDialogs.confirm(
+    context,
+    title: '读取手机日历？',
+    message:
+        '只会在本机前台读取日程，用于首页、周视图和半月/月视图展示。'
+        '不会写入系统日历，不会导入为待办，也不会上传或参与任何同步。',
+    confirmLabel: '继续',
+  );
 }
 
 /// The compact, immediate toggle used by the one-time feature guide.
@@ -240,8 +228,8 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
               )
             else if (_loading)
               const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: AppSkeletonSettingsSection(rows: 3, showHeader: false),
               )
             else if (_permissionGranted) ...[
               const SizedBox(height: 20),

@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/share_readonly_widgets.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class ShareViewScreen extends StatefulWidget {
   final String shareCode;
@@ -18,6 +20,8 @@ class ShareViewScreen extends StatefulWidget {
 
 class _ShareViewScreenState extends State<ShareViewScreen> {
   bool _isLoading = true;
+  bool _includeHistory = false;
+  bool _isLoadingHistory = false;
   bool _needsPassword = false;
   bool _hasError = false;
   String _errorMessage = '';
@@ -44,34 +48,55 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
+  Future<void> _loadData({
+    bool? includeHistory,
+    bool keepContent = false,
+  }) async {
+    final targetIncludeHistory = includeHistory ?? _includeHistory;
+    if (!keepContent) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    } else {
+      setState(() {
+        _isLoadingHistory = true;
+      });
+    }
     final result = await ApiService.fetchShareData(
       widget.shareCode,
       token: _accessToken,
+      includeHistory: targetIncludeHistory,
     );
     if (!mounted) return;
     if (result['success'] == true) {
       _parseData(result);
       setState(() {
         _data = result;
+        _includeHistory = targetIncludeHistory;
         _isLoading = false;
+        _isLoadingHistory = false;
         _needsPassword = false;
       });
     } else if (result['error'] == 'Password required') {
       setState(() {
         _needsPassword = true;
         _isLoading = false;
+        _isLoadingHistory = false;
       });
-    } else {
+    } else if (!keepContent) {
       setState(() {
         _hasError = true;
         _errorMessage = result['error'] ?? '加载失败';
         _isLoading = false;
+        _isLoadingHistory = false;
       });
+    } else {
+      setState(() => _isLoadingHistory = false);
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text(result['error']?.toString() ?? '加载历史失败')),
+      );
     }
   }
 
@@ -319,29 +344,19 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   }
 
   Widget _buildLoading() {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '加载中...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade500,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+    return const Scaffold(
+      body: SafeArea(
+        child: AppSkeletonDashboardPage(
+          maxWidth: 1240,
+          showTopHeaderSpan: true,
+          showMetricGrid: true,
+          showChart: false,
+          listCount: 4,
+          wideLayout: AppSkeletonDashboardWideLayout.splitColumns,
+          wideBreakpoint: 900,
+          leftFlex: 5,
+          rightFlex: 5,
+          wideHorizontalPadding: 24,
         ),
       ),
     );
@@ -487,6 +502,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       _schedules,
       scheduleNow,
     );
+    final historyMeta = _data!['history_meta'] is Map
+        ? Map<String, dynamic>.from(_data!['history_meta'] as Map)
+        : const <String, dynamic>{};
+    final truncatedHistoryCount = _truncatedHistoryCount(historyMeta);
     final hasContent =
         _todos.isNotEmpty ||
         visibleSchedules.isNotEmpty ||
@@ -498,7 +517,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       body: RefreshIndicator(
         color: colorScheme.primary,
         backgroundColor: colorScheme.surfaceContainerHighest,
-        onRefresh: _loadData,
+        onRefresh: () => _loadData(),
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
@@ -552,7 +571,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded),
-                  onPressed: _loadData,
+                  onPressed: () => _loadData(),
                   tooltip: '刷新',
                 ),
               ],
@@ -566,6 +585,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                       teamName: teamName,
                       announcementsCount: announcements.length,
                       scheduleCount: visibleSchedules.length,
+                      historyMeta: historyMeta,
                       isDesktop: isDesktop,
                       colorScheme: colorScheme,
                     ),
@@ -597,6 +617,17 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   SliverToBoxAdapter(
                     child: _buildCenteredContent(
                       _buildEmptyPanel(colorScheme),
+                      contentWidth: contentWidth,
+                      top: 16,
+                    ),
+                  ),
+                if (truncatedHistoryCount > 0)
+                  SliverToBoxAdapter(
+                    child: _buildCenteredContent(
+                      _buildLoadHistoryBanner(
+                        colorScheme: colorScheme,
+                        truncatedCount: truncatedHistoryCount,
+                      ),
                       contentWidth: contentWidth,
                       top: 16,
                     ),
@@ -781,29 +812,100 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     );
   }
 
+  int _historyDomainTotal(
+    Map<String, dynamic> historyMeta,
+    String domain,
+    int fallback,
+  ) {
+    final domainMeta = historyMeta[domain];
+    if (domainMeta is Map) {
+      final total = domainMeta['total'];
+      if (total is num) return total.toInt();
+    }
+    return fallback;
+  }
+
+  int _truncatedHistoryCount(Map<String, dynamic> historyMeta) {
+    var total = 0;
+    for (final domain in const ['todos', 'schedules', 'countdowns']) {
+      final domainMeta = historyMeta[domain];
+      if (domainMeta is Map) {
+        final truncated = domainMeta['truncated'];
+        if (truncated is num && truncated > 0) {
+          total += truncated.toInt();
+        }
+      }
+    }
+    return total;
+  }
+
+  Widget _buildLoadHistoryBanner({
+    required ColorScheme colorScheme,
+    required int truncatedCount,
+  }) {
+    return _buildSurfacePanel(
+      colorScheme: colorScheme,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Row(
+        children: [
+          Icon(Icons.history_rounded, size: 20, color: colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '当前仅加载近期记录，还有 $truncatedCount 条历史记录未展开',
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: _isLoadingHistory
+                ? null
+                : () => _loadData(includeHistory: true, keepContent: true),
+            child: Text(_isLoadingHistory ? '加载中…' : '加载全部'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard({
     required String teamName,
     required int announcementsCount,
     required int scheduleCount,
+    required Map<String, dynamic> historyMeta,
     required bool isDesktop,
     required ColorScheme colorScheme,
   }) {
+    final totalTodos = _historyDomainTotal(historyMeta, 'todos', _todos.length);
+    final totalCountdowns = _historyDomainTotal(
+      historyMeta,
+      'countdowns',
+      _countdowns.length,
+    );
+    final totalSchedules = _historyDomainTotal(
+      historyMeta,
+      'schedules',
+      scheduleCount,
+    );
     final metrics = [
       (
         icon: Icons.checklist_rounded,
-        value: _todos.length.toString(),
+        value: totalTodos.toString(),
         label: '待办事项',
         color: colorScheme.primary,
       ),
       (
         icon: Icons.timer_outlined,
-        value: _countdowns.length.toString(),
+        value: totalCountdowns.toString(),
         label: '重要日',
         color: colorScheme.secondary,
       ),
       (
         icon: Icons.event_available_outlined,
-        value: scheduleCount.toString(),
+        value: totalSchedules.toString(),
         label: '日程',
         color: colorScheme.tertiary,
       ),
@@ -1300,7 +1402,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   String _fmtDateTime(int ts) {
     final d = DateTime.fromMillisecondsSinceEpoch(ts);
-    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.compactDateTime(d);
   }
 }

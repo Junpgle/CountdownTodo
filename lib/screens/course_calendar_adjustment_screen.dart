@@ -1,24 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../services/course_calendar_adjustment_service.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
-
-final Map<String?, DateFormat> _courseAdjustmentDateFormats = {};
-
-DateFormat _courseAdjustmentDateFormat() {
-  final locale = Intl.defaultLocale;
-  final cached = _courseAdjustmentDateFormats[locale];
-  if (cached != null) return cached;
-  if (_courseAdjustmentDateFormats.length >= 4) {
-    _courseAdjustmentDateFormats.clear();
-  }
-  return _courseAdjustmentDateFormats[locale] = DateFormat(
-    'yyyy-MM-dd',
-    locale,
-  );
-}
 
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
   final String? initialOfficialHolidayKey;
@@ -37,7 +23,6 @@ class CourseCalendarAdjustmentScreen extends StatefulWidget {
 
 class _CourseCalendarAdjustmentScreenState
     extends State<CourseCalendarAdjustmentScreen> {
-  DateFormat get _df => _courseAdjustmentDateFormat();
   CourseCalendarAdjustment _adjustment = CourseCalendarAdjustment.empty();
   bool _loading = true;
 
@@ -89,7 +74,7 @@ class _CourseCalendarAdjustmentScreenState
 
     final picked = await _pickDate();
     if (picked == null) return;
-    final date = _df.format(picked);
+    final date = AppTimeFormats.date(picked);
     await _save(
       _adjustment.copyWith(
         holidayDates: {..._adjustment.holidayDates, date},
@@ -112,7 +97,10 @@ class _CourseCalendarAdjustmentScreenState
       _adjustment.copyWith(
         transfers: [
           ..._adjustment.transfers,
-          CourseDayTransfer(fromDate: _df.format(from), toDate: _df.format(to)),
+          CourseDayTransfer(
+            fromDate: AppTimeFormats.date(from),
+            toDate: AppTimeFormats.date(to),
+          ),
         ],
       ),
     );
@@ -213,8 +201,8 @@ class _CourseCalendarAdjustmentScreenState
 
     final next = [..._adjustment.transfers];
     next[index] = CourseDayTransfer(
-      fromDate: _df.format(from),
-      toDate: _df.format(to),
+      fromDate: AppTimeFormats.date(from),
+      toDate: AppTimeFormats.date(to),
       label: current.label,
     );
     await _save(_adjustment.copyWith(transfers: next));
@@ -222,7 +210,7 @@ class _CourseCalendarAdjustmentScreenState
 
   DateTime? _tryParseDate(String value) {
     try {
-      return _df.parseStrict(value);
+      return AppTimeFormats.dateFormatter('yyyy-MM-dd').parseStrict(value);
     } catch (_) {
       return null;
     }
@@ -246,7 +234,16 @@ class _CourseCalendarAdjustmentScreenState
         context,
         standalone: !widget.isEmbedded,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: widget.isEmbedded
+                    ? 16
+                    : floatingGlassSettingsContentTopInset(context),
+                maxWidth: 1000,
+                useTwoColumnsOnWide: true,
+                wideBreakpoint: 620,
+                itemCount: 4,
+                itemHeight: 82,
+              )
             : ListView(
                 padding: EdgeInsets.fromLTRB(
                   16,
@@ -744,7 +741,8 @@ class _TransferRow extends StatelessWidget {
 
   String _short(String date) {
     try {
-      final parsed = _courseAdjustmentDateFormat().parseStrict(date);
+      final parsed = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+          .parseStrict(date);
       return '${parsed.month}月${parsed.day}日';
     } catch (_) {
       return date;
@@ -823,7 +821,8 @@ class _TransferRowCompact extends StatelessWidget {
 
   String _short(String date) {
     try {
-      final parsed = _courseAdjustmentDateFormat().parseStrict(date);
+      final parsed = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+          .parseStrict(date);
       return '${parsed.month}月${parsed.day}日';
     } catch (_) {
       return date;

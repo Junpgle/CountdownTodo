@@ -7,6 +7,7 @@ import '../storage_service.dart';
 import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'pomodoro_service.dart';
+import '../utils/calendar_date_math.dart';
 
 enum PlanDragKind { move, resizeStart, resizeEnd }
 
@@ -38,8 +39,8 @@ class PlanDragGeometry {
     required int step,
     required PlanDragKind kind,
   }) {
-    final first = DateTime(date.year, date.month, date.day);
-    final last = DateTime(date.year, date.month, date.day + 1);
+    final first = CalendarDateMath.dateOnly(date);
+    final last = AppTimeFormats.localDayStartOffset(date, 1);
     if (step <= 0 ||
         !deltaMinutes.isFinite ||
         !original.end.isAfter(original.start) ||
@@ -85,7 +86,7 @@ class PlanDragGeometry {
 /// Copies are returned to callers, so editing a preview cannot mutate a guard.
 class PlanDragSnapshot {
   PlanDragSnapshot(this.username, DateTime date, TodoPlanBlock block)
-    : date = DateTime(date.year, date.month, date.day),
+    : date = CalendarDateMath.dateOnly(date),
       _json = jsonEncode(block.toJson());
   final String username;
   final DateTime date;
@@ -144,7 +145,7 @@ class PlanDragService {
 
   void _times(PlanDragSnapshot expected, PlanDragTimes target) {
     final first = expected.date;
-    final last = DateTime(first.year, first.month, first.day + 1);
+    final last = AppTimeFormats.localDayStartOffset(first, 1);
     if (target.start.isBefore(first) ||
         target.end.isAfter(last) ||
         !target.end.isAfter(target.start) ||

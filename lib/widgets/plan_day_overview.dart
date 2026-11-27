@@ -51,7 +51,7 @@ class _PlanDayOverviewState extends State<PlanDayOverview>
   String? _error;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   DateTime get _start => DateUtils.dateOnly(widget.date);
-  DateTime get _end => DateTime(_start.year, _start.month, _start.day + 1);
+  DateTime get _end => AppTimeFormats.localDayStartOffset(_start, 1);
   bool get _active => _visible && widget.enabled && _foreground;
   bool get _canOpen =>
       _active && !_loading && !_opening && _data != null && _error == null;

@@ -1,4 +1,5 @@
 import '../models.dart';
+import 'time_utils.dart';
 
 /// Indexes persisted recurrence occurrences for calendar projection.
 ///
@@ -45,10 +46,9 @@ class TodoRecurrenceCalendarIndex {
   static String? _keyForTodo(TodoItem todo) {
     final seriesId = todo.recurrenceSeriesId;
     if (seriesId == null || seriesId.isEmpty) return null;
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     return _key(seriesId, start);
   }
 

@@ -7,6 +7,7 @@ import '../features/finance/services/ai_usage_cost_service.dart';
 import '../models/chat_message.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
+import '../utils/json_value_parser.dart';
 
 class AiTokenUsage {
   final int promptTokens;
@@ -89,9 +90,7 @@ class AiTokenUsage {
   }
 
   static int _readInt(Object? value) {
-    final parsed = value is num
-        ? value.toInt()
-        : int.tryParse(value?.toString() ?? '') ?? 0;
+    final parsed = JsonValueParser.toInt(value);
     return parsed < 0 ? 0 : parsed;
   }
 }

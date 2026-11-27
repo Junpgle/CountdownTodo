@@ -1,17 +1,17 @@
 import 'plan_availability.dart';
+import '../utils/time_utils.dart';
 
 class PlanSplitQuery {
   const PlanSplitQuery(this.base, {this.days = 1, this.maximum = 45});
   final PlanAvailabilityQuery base;
   final int days, maximum;
   int get total => base.minutes;
-  DateTime get endDate =>
-      DateTime(base.date.year, base.date.month, base.date.day + days);
+  DateTime get endDate => AppTimeFormats.localDayStartOffset(base.date, days);
   PlanAvailabilityQuery day(int index, {int minutes = 15}) =>
       PlanAvailabilityQuery(
         username: base.username,
         todoId: base.todoId,
-        date: DateTime(base.date.year, base.date.month, base.date.day + index),
+        date: AppTimeFormats.localDayStartOffset(base.date, index),
         minutes: minutes,
         windowStart: base.windowStart,
         windowEnd: base.windowEnd,
@@ -84,10 +84,9 @@ class PlanSplitDraft {
     if (query.days < 1 || query.days > 7) return const [];
     return [
       for (var i = 0; i <= query.days; i++)
-        DateTime(
-          query.base.date.year,
-          query.base.date.month,
-          query.base.date.day + i,
+        AppTimeFormats.localDayStartOffset(
+          query.base.date,
+          i,
         ).timeZoneOffset.inMinutes,
       for (final slot in slots) ...[
         slot.start.timeZoneOffset.inMinutes,
@@ -199,9 +198,7 @@ class PlanSplitDraft {
           s.end.difference(s.start).inMilliseconds != s.minutes * 60000 ||
           s.start.isBefore(q.base.dayStart) ||
           !s.start.isBefore(q.endDate) ||
-          s.end.isAfter(
-            DateTime(s.start.year, s.start.month, s.start.day + 1),
-          ) ||
+          s.end.isAfter(AppTimeFormats.localDayStartOffset(s.start, 1)) ||
           (i > 0 && s.start.isBefore(slots[i - 1].end))) {
         throw const FormatException('分段草稿时段无效');
       }

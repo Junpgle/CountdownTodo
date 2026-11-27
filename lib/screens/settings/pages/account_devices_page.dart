@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../utils/app_dialogs.dart';
-import '../../../widgets/app_state_views.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
+import '../../../utils/time_utils.dart';
 
 class AccountDevicesPage extends StatefulWidget {
   final bool isEmbedded;
@@ -132,18 +133,19 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
     if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
     if (diff.inDays < 7) return '${diff.inDays} 天前';
-    final month = dt.month.toString().padLeft(2, '0');
-    final day = dt.day.toString().padLeft(2, '0');
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '${dt.year}-$month-$day $hour:$minute';
+    return AppTimeFormats.fullDateTime(dt);
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final body = _loading
-        ? const Center(child: AppLoadingIndicator())
+        ? AppSkeletonListPage(
+            topPadding: floatingGlassSettingsContentTopInset(context),
+            showHeroCard: true,
+            itemCount: 3,
+            itemHeight: 84,
+          )
         : _error != null
         ? Center(
             child: Padding(
@@ -473,7 +475,7 @@ class _KickDeviceVerificationDialogState
     extends State<_KickDeviceVerificationDialog> {
   final TextEditingController _codeController = TextEditingController();
   Timer? _countdownTimer;
-  int _secondsLeft = 0;
+  final ValueNotifier<int> _secondsLeft = ValueNotifier<int>(0);
   bool _sendingCode = false;
   bool _submitting = false;
   String? _errorText;
@@ -482,29 +484,30 @@ class _KickDeviceVerificationDialogState
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _secondsLeft.dispose();
     _codeController.dispose();
     super.dispose();
   }
 
   void _startCountdown() {
     _countdownTimer?.cancel();
-    setState(() => _secondsLeft = 60);
+    _secondsLeft.value = 60;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      if (_secondsLeft <= 1) {
+      if (_secondsLeft.value <= 1) {
         timer.cancel();
-        setState(() => _secondsLeft = 0);
+        _secondsLeft.value = 0;
       } else {
-        setState(() => _secondsLeft--);
+        _secondsLeft.value--;
       }
     });
   }
 
   Future<void> _sendCode() async {
-    if (_sendingCode || _secondsLeft > 0) return;
+    if (_sendingCode || _secondsLeft.value > 0) return;
     setState(() {
       _sendingCode = true;
       _errorText = null;
@@ -600,17 +603,20 @@ class _KickDeviceVerificationDialogState
                 const SizedBox(width: 8),
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: OutlinedButton(
-                    onPressed: (_sendingCode || _secondsLeft > 0)
-                        ? null
-                        : _sendCode,
-                    child: _sendingCode
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(_secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码'),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _secondsLeft,
+                    builder: (context, secondsLeft, _) => OutlinedButton(
+                      onPressed: (_sendingCode || secondsLeft > 0)
+                          ? null
+                          : _sendCode,
+                      child: _sendingCode
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(secondsLeft > 0 ? '${secondsLeft}s' : '获取验证码'),
+                    ),
                   ),
                 ),
               ],

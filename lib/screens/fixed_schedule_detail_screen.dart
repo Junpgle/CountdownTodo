@@ -13,6 +13,7 @@ import 'add_todo_screen.dart';
 import 'course_screens.dart';
 import 'fixed_schedule_editor_screen.dart';
 import 'plan_preparation_screen.dart';
+import '../utils/text_utils.dart';
 
 class FixedScheduleDetailScreen extends StatefulWidget {
   const FixedScheduleDetailScreen({
@@ -122,10 +123,7 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
     }
   }
 
-  String? _normalizedTeamUuid(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
+  String? _normalizedTeamUuid(String? value) => AppTextUtils.trimToNull(value);
 
   bool _hasSameVisibility(TodoItem todo) =>
       _normalizedTeamUuid(todo.teamUuid) == _normalizedTeamUuid(item.teamUuid);

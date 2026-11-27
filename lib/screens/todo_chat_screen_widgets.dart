@@ -32,7 +32,7 @@ class _StaggeredFadeSlide extends StatelessWidget {
           opacity: delayedValue,
           child: Transform.translate(
             offset: Offset(0, 18 * (1 - delayedValue)),
-            child: child,
+            child: RepaintBoundary(child: child),
           ),
         );
       },

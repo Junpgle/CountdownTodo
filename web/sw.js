@@ -1,10 +1,10 @@
 // CountDownTodo PWA Service Worker
 // Handles offline caching and update lifecycle.
 
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const CACHE_NAME = `countdowntodo-${CACHE_VERSION}`;
 const OFFLINE_URL = './offline.html';
-const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20261114b';
+const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20261127a';
 
 // App shell files to pre-cache on install.
 // Flutter build output is hashed, so we only cache the unhashed entry points;
@@ -53,8 +53,6 @@ function isSameOrigin(url) {
 function isNetworkFirstAsset(url) {
   return url.pathname.endsWith('/main.dart.js') ||
     url.pathname.endsWith('/flutter_bootstrap.js') ||
-    url.pathname.endsWith('/share-viewer.js') ||
-    url.pathname.endsWith('/share-viewer.css') ||
     url.pathname.endsWith('/version.json');
 }
 
@@ -110,20 +108,23 @@ self.addEventListener('fetch', (event) => {
   // Range requests are used by media and should not be served from this cache.
   if (request.headers.has('range')) return;
 
-  // Navigation requests: network-first, fallback to cached index.html.
+  // Navigation requests: network-first, fallback to cached shell.
   if (request.mode === 'navigate') {
+    const isShareRoute = url.pathname === '/share' || url.pathname.startsWith('/share/');
+    const shellCacheKey = isShareRoute ? './share.html' : './index.html';
     event.respondWith(
       fetch(request)
         .then((response) => {
           if (response && response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put('./index.html', clone);
+              cache.put(shellCacheKey, clone);
             });
           }
           return response;
         })
         .catch(async () =>
+          (await caches.match(shellCacheKey)) ||
           (await caches.match('./index.html')) ||
           (await caches.match(OFFLINE_URL)) ||
           Response.error()

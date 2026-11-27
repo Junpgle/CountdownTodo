@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/cloud_challenge.dart';
 import '../services/cloud_challenge_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 
@@ -339,13 +340,11 @@ class _CloudChallengePickerScreenState
   }
 
   String? _periodLabelFromTag(String value) {
-    return _periodLabelFromMatch(
-      RegExp(r'^\s*(\d+)\s*(天|次)').firstMatch(value),
-    );
+    return _periodLabelFromMatch(_rxCached12_1.firstMatch(value));
   }
 
   String? _periodLabelFromText(String value) {
-    return _periodLabelFromMatch(RegExp(r'(\d+)\s*(天|次)').firstMatch(value));
+    return _periodLabelFromMatch(_rxCached12_2.firstMatch(value));
   }
 
   String? _periodLabelFromMatch(RegExpMatch? match) {
@@ -355,7 +354,7 @@ class _CloudChallengePickerScreenState
   }
 
   int _periodValue(String label) {
-    return int.tryParse(RegExp(r'\d+').firstMatch(label)?.group(0) ?? '') ?? 0;
+    return int.tryParse(_rxCached12_3.firstMatch(label)?.group(0) ?? '') ?? 0;
   }
 
   String _periodFilterKey(String label) => 'period:$label';
@@ -418,7 +417,12 @@ class _CloudChallengePickerScreenState
       body: FloatingGlassTopBarContentFade(
         topBarHeight: kToolbarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: floatingGlassTopBarHeight(context) + 12,
+                showFilterChips: true,
+                itemCount: 5,
+                itemHeight: 108,
+              )
             : _error != null
             ? _buildErrorState(scheme)
             : catalog == null
@@ -1005,3 +1009,8 @@ class _CloudChallengePickerScreenState
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached12_1 = RegExp(r'^\s*(\d+)\s*(天|次)');
+final RegExp _rxCached12_2 = RegExp(r'(\d+)\s*(天|次)');
+final RegExp _rxCached12_3 = RegExp(r'\d+');

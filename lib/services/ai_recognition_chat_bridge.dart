@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../features/finance/models/finance_models.dart';
 import '../models/chat_message.dart';
+import '../utils/sync_error_formatter.dart';
 import 'chat_storage_service.dart';
 
 class AiRecognitionHandle {
@@ -203,7 +204,7 @@ class AiRecognitionChatBridge {
       final existing = await _findMessage(handle);
       final info = existing?.recognition;
       if (existing == null || info == null) return;
-      final message = error.toString().replaceFirst('Exception: ', '').trim();
+      final message = SyncErrorFormatter.stripExceptionPrefix(error.toString());
       await ChatStorageService.updateMessage(
         existing.copyWith(
           content: '识别失败：${message.isEmpty ? '未知错误' : message}',

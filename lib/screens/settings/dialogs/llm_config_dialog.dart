@@ -5,6 +5,7 @@ import '../../../services/llm_service.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../widgets/app_skeleton.dart';
 
 class LLMConfigDialog extends StatefulWidget {
   const LLMConfigDialog({super.key});
@@ -144,8 +145,12 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       content: _isLoading
           ? const SizedBox(
-              height: 100,
-              child: Center(child: CircularProgressIndicator()),
+              height: 120,
+              child: AppSkeletonSheetList(
+                itemCount: 3,
+                itemHeight: 30,
+                padding: EdgeInsets.zero,
+              ),
             )
           : _accessDenied
           ? const SizedBox(

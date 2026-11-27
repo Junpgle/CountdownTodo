@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:intl/intl.dart';
 
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/habits/services/habit_widget_checkin.dart';
@@ -14,8 +13,10 @@ import '../screens/personal_timeline_screen.dart';
 import '../storage_service.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import '../utils/todo_recurrence_picker.dart';
 import 'widget_service_io.dart';
+import '../utils/text_utils.dart';
 
 class AppDeepLinkService {
   static const String scheme = 'countdowntodo';
@@ -227,8 +228,7 @@ class AppDeepLinkService {
         uri.pathSegments.isNotEmpty &&
         uri.pathSegments.first == 'recurrence';
     if (!isRecurrenceTodo) return null;
-    final seriesId = uri.queryParameters['seriesId']?.trim();
-    return seriesId == null || seriesId.isEmpty ? null : seriesId;
+    return AppTextUtils.trimToNull(uri.queryParameters['seriesId']);
   }
 
   static Future<void> _registerWindowsProtocol() async {
@@ -313,7 +313,7 @@ class _TimelineReportTarget {
   static DateTime? _parseDate(String? value) {
     if (value == null || value.isEmpty) return null;
     try {
-      return DateFormat('yyyy-MM-dd').parseStrict(value);
+      return AppTimeFormats.dateFormatter('yyyy-MM-dd').parseStrict(value);
     } catch (_) {
       return null;
     }

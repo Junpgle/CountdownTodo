@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,8 +7,9 @@ import '../../../utils/app_platform.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
+import '../../../utils/time_utils.dart';
 
 class FinanceCategoryDetailScreen extends StatefulWidget {
   final String periodTitle;
@@ -17,6 +17,7 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
   final DateTime? periodEnd;
   final DateTime Function() clock;
   final bool isPlanned;
+  final FinanceCategoryType categoryType;
   final String? rootCategoryUuid;
   final bool categoryTapOpensLedger;
   final List<FinanceTransaction> transactions;
@@ -47,6 +48,7 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
     this.periodEnd,
     this.clock = DateTime.now,
     this.isPlanned = false,
+    this.categoryType = FinanceCategoryType.expense,
     required this.rootCategoryUuid,
     this.categoryTapOpensLedger = true,
     required this.transactions,
@@ -63,7 +65,9 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
 
 class _FinanceCategoryDetailScreenState
     extends State<FinanceCategoryDetailScreen>
-    with SingleTickerProviderStateMixin {
+    with
+        SingleTickerProviderStateMixin,
+        FinanceRevisionRefreshMixin<FinanceCategoryDetailScreen> {
   final Map<String, GlobalKey> _itemSourceKeys = {};
   final Map<String, GlobalKey> _billSourceKeys = {};
   bool _openingCategoryLedger = false;
@@ -78,7 +82,6 @@ class _FinanceCategoryDetailScreenState
   Map<String, FinanceCategory> _categoryRootsByUuid = const {};
   Map<String, FinanceCategory>? _categoryLabelCacheSource;
   final Map<String, String> _categoryLabelsByUuid = {};
-  Timer? _financeChangeRefreshTimer;
   Timer? _upcomingTransactionTimer;
   int _loadGeneration = 0;
 
@@ -86,6 +89,10 @@ class _FinanceCategoryDetailScreenState
   String? get rootCategoryUuid => widget.rootCategoryUuid;
   List<FinanceTransaction> get transactions => _transactions;
   Map<String, FinanceCategory> get categories => _categories;
+  bool get _isIncome => widget.categoryType == FinanceCategoryType.income;
+  bool _matchesCategoryType(FinanceTransaction transaction) => _isIncome
+      ? transaction.type == FinanceTransactionType.income
+      : transaction.isExpenseLike;
   bool get _isPlanned {
     final from = widget.periodStart;
     return from == null ? widget.isPlanned : from.isAfter(widget.clock());
@@ -104,7 +111,7 @@ class _FinanceCategoryDetailScreenState
       CurveTween(curve: Curves.easeOutCubic),
     );
     _donutAnimationController.forward();
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     unawaited(_reloadPeriodData());
   }
 
@@ -114,11 +121,14 @@ class _FinanceCategoryDetailScreenState
     final periodChanged =
         oldWidget.periodStart != widget.periodStart ||
         oldWidget.periodEnd != widget.periodEnd;
+    if (periodChanged || oldWidget.categoryType != widget.categoryType) {
+      _selectedCategoryUuid = null;
+      _expandedCategoryUuid = null;
+      _donutAnimationController.forward(from: 0.0);
+    }
     if (periodChanged) {
       _upcomingTransactionTimer?.cancel();
       _upcomingTransactionTimer = null;
-      _selectedCategoryUuid = null;
-      _donutAnimationController.forward(from: 0.0);
       unawaited(_reloadPeriodData());
     }
     if (!identical(oldWidget.transactions, widget.transactions)) {
@@ -132,19 +142,12 @@ class _FinanceCategoryDetailScreenState
   @override
   void dispose() {
     _donutAnimationController.dispose();
-    _financeChangeRefreshTimer?.cancel();
     _upcomingTransactionTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_reloadPeriodData());
-    });
-  }
+  @override
+  void onFinanceRevisionRefresh() => unawaited(_reloadPeriodData());
 
   Future<void> _reloadPeriodData() async {
     final from = widget.periodStart;
@@ -196,7 +199,7 @@ class _FinanceCategoryDetailScreenState
       _donutAnimationController.forward(from: 0.0);
     } catch (error) {
       if (!mounted) return;
-      debugPrint('刷新支出分类详情失败：$error');
+      debugPrint('刷新${_isIncome ? '收入' : '支出'}分类详情失败：$error');
       // Keep the last usable detail visible if refreshing from local storage fails.
     }
   }
@@ -286,7 +289,7 @@ class _FinanceCategoryDetailScreenState
   List<FinanceTransaction> get _matchingTransactions => transactions
       .where(
         (transaction) =>
-            transaction.isExpenseLike && _belongsToRoot(transaction),
+            _matchesCategoryType(transaction) && _belongsToRoot(transaction),
       )
       .toList();
 
@@ -297,11 +300,16 @@ class _FinanceCategoryDetailScreenState
     final countByCategory = <String, int>{};
     var total = 0;
     for (final transaction in matchingTransactions) {
-      final contribution = switch (transaction.type) {
-        FinanceTransactionType.expense => transaction.amountMinor,
-        FinanceTransactionType.refund => -transaction.amountMinor,
-        FinanceTransactionType.income || FinanceTransactionType.transfer => 0,
-      };
+      final contribution = _isIncome
+          ? (transaction.type == FinanceTransactionType.income
+                ? transaction.amountMinor
+                : 0)
+          : switch (transaction.type) {
+              FinanceTransactionType.expense => transaction.amountMinor,
+              FinanceTransactionType.refund => -transaction.amountMinor,
+              FinanceTransactionType.income ||
+              FinanceTransactionType.transfer => 0,
+            };
       total += contribution;
       final categoryUuid = transaction.categoryUuid;
       if (categoryUuid == null) continue;
@@ -364,214 +372,6 @@ class _FinanceCategoryDetailScreenState
     return (items: result, total: total);
   }
 
-  void _handleChartTap(
-    Offset localPosition,
-    double chartSize,
-    List<FinanceDonutSlice> slices,
-    int total,
-  ) {
-    if (total <= 0 || slices.isEmpty) return;
-    final center = Offset(chartSize / 2, chartSize / 2);
-    final distance = (localPosition - center).distance;
-    final isLarge = chartSize >= 160.0;
-    final baseRadius = chartSize / 2 - (isLarge ? 18.0 : 14.0);
-
-    // 点击环心：若当前已选中某小类，则切回总额
-    if (distance < baseRadius - (isLarge ? 18.0 : 15.0)) {
-      if (_selectedCategoryUuid != null) {
-        setState(() => _selectedCategoryUuid = null);
-        HapticFeedback.selectionClick();
-      }
-      return;
-    }
-
-    // 点击圆环附近区域
-    if (distance >= baseRadius - 22.0 && distance <= baseRadius + 26.0) {
-      final angle = math.atan2(
-        localPosition.dy - center.dy,
-        localPosition.dx - center.dx,
-      );
-      var normalized = (angle + math.pi / 2) % (2 * math.pi);
-      if (normalized < 0) normalized += 2 * math.pi;
-
-      var accumulated = 0.0;
-      for (final slice in slices) {
-        final sweep = 2 * math.pi * (slice.value / total);
-        if (normalized >= accumulated && normalized < accumulated + sweep) {
-          setState(() {
-            if (_selectedCategoryUuid == slice.categoryUuid) {
-              _selectedCategoryUuid = null;
-            } else {
-              _selectedCategoryUuid = slice.categoryUuid;
-            }
-          });
-          HapticFeedback.selectionClick();
-          return;
-        }
-        accumulated += sweep;
-      }
-    }
-  }
-
-  Widget _buildDonutCenterInfo(
-    BuildContext context,
-    ColorScheme colorScheme,
-    int total,
-    bool isPlanned,
-    FinanceDonutSlice? selectedSlice,
-    int subcategoryCount,
-    double donutSize,
-  ) {
-    final isDark = colorScheme.brightness == Brightness.dark;
-    final contentKey = ValueKey(
-      selectedSlice?.categoryUuid ?? 'subcategory-total',
-    );
-    final isLarge = donutSize >= 160.0;
-    final titleFontSize = isLarge ? 13.5 : 11.5;
-    final amountFontSize = isLarge ? 22.0 : 17.0;
-    final badgeFontSize = isLarge ? 11.5 : 10.0;
-    final badgePadding = isLarge
-        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5)
-        : const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5);
-
-    return IgnorePointer(
-      child: Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: isLarge ? 20.0 : 14.0),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final scale = Tween<double>(
-                begin: 0.92,
-                end: 1.0,
-              ).animate(animation);
-              return AnimatedBuilder(
-                animation: animation,
-                child: child,
-                builder: (context, child) {
-                  if (animation.value <= 0.001) {
-                    return const SizedBox.shrink();
-                  }
-                  if (animation.value >= 0.999) {
-                    return child!;
-                  }
-                  return FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: scale, child: child),
-                  );
-                },
-              );
-            },
-            child: KeyedSubtree(
-              key: contentKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (selectedSlice != null) ...[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (selectedSlice.icon != null &&
-                            selectedSlice.icon!.isNotEmpty) ...[
-                          Text(
-                            selectedSlice.icon!,
-                            style: TextStyle(fontSize: isLarge ? 14 : 12),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        Flexible(
-                          child: Text(
-                            selectedSlice.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        formatFinanceAmount(selectedSlice.value),
-                        style: TextStyle(
-                          fontSize: amountFontSize,
-                          fontWeight: FontWeight.w800,
-                          color: selectedSlice.color,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Container(
-                      padding: badgePadding,
-                      decoration: BoxDecoration(
-                        color: selectedSlice.color.withValues(
-                          alpha: isDark ? 0.22 : 0.12,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '占比 ${total > 0 ? (selectedSlice.value / total * 100).toStringAsFixed(1) : '0.0'}%',
-                        style: TextStyle(
-                          fontSize: badgeFontSize,
-                          fontWeight: FontWeight.w700,
-                          color: selectedSlice.color,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ] else ...[
-                    Text(
-                      isPlanned ? '计划小类支出' : '小类净支出',
-                      style: TextStyle(
-                        fontSize: titleFontSize,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        formatFinanceAmount(total),
-                        style: TextStyle(
-                          fontSize: amountFontSize,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.onSurface,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '共 $subcategoryCount 项小类',
-                      style: TextStyle(
-                        fontSize: badgeFontSize,
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.8,
-                        ),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -607,7 +407,6 @@ class _FinanceCategoryDetailScreenState
       }
     }
 
-    final isDark = colorScheme.brightness == Brightness.dark;
     final isTest = AppPlatform.isFlutterTest;
     final donutSize = isTest ? 136.0 : 180.0;
     final sliceColors = <Color>[
@@ -629,19 +428,14 @@ class _FinanceCategoryDetailScreenState
             icon: items[index].icon,
           ),
     ];
-    FinanceDonutSlice? selectedSlice;
-    if (_selectedCategoryUuid != null) {
-      for (final slice in slices) {
-        if (slice.categoryUuid == _selectedCategoryUuid) {
-          selectedSlice = slice;
-          break;
-        }
-      }
-    }
 
     return Scaffold(
       appBar: FloatingGlassAppBar(
-        title: Text(isPlanned ? '计划支出分类详情' : '支出分类详情'),
+        title: Text(
+          _isIncome
+              ? (isPlanned ? '计划收入分类详情' : '收入分类详情')
+              : (isPlanned ? '计划支出分类详情' : '支出分类详情'),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
@@ -693,7 +487,9 @@ class _FinanceCategoryDetailScreenState
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        isPlanned ? '计划净支出' : '净支出',
+                        _isIncome
+                            ? (isPlanned ? '计划收入' : '总收入')
+                            : (isPlanned ? '计划净支出' : '净支出'),
                         style: TextStyle(
                           color: colorScheme.onPrimaryContainer.withValues(
                             alpha: 0.75,
@@ -749,52 +545,24 @@ class _FinanceCategoryDetailScreenState
                     if (hasSubcategories &&
                         slices.length >= 2 &&
                         total > 0) ...[
-                      SizedBox(
-                        height: donutSize + 4,
-                        child: Center(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTapUp: (details) => _handleChartTap(
-                              details.localPosition,
-                              donutSize,
-                              slices,
-                              total,
-                            ),
-                            child: SizedBox.square(
-                              dimension: donutSize,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  RepaintBoundary(
-                                    child: CustomPaint(
-                                      size: Size.square(donutSize),
-                                      painter: FinanceDonutPainter(
-                                        slices: slices,
-                                        total: total,
-                                        selectedCategoryUuid:
-                                            _selectedCategoryUuid,
-                                        sweepProgress: _donutAnimation.value,
-                                        sweepAnimation: _donutAnimation,
-                                        emptyColor:
-                                            colorScheme.surfaceContainerHighest,
-                                        isDark: isDark,
-                                      ),
-                                    ),
-                                  ),
-                                  _buildDonutCenterInfo(
-                                    context,
-                                    colorScheme,
-                                    total,
-                                    isPlanned,
-                                    selectedSlice,
-                                    items.length,
-                                    donutSize,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
+                      FinanceCategoryDonutChart(
+                        slices: slices,
+                        total: total,
+                        donutSize: donutSize,
+                        sweepAnimation: _donutAnimation,
+                        colorScheme: colorScheme,
+                        selectedCategoryUuid: _selectedCategoryUuid,
+                        onSelectCategory: (uuid) =>
+                            setState(() => _selectedCategoryUuid = uuid),
+                        totalTitle: _isIncome
+                            ? (isPlanned ? '计划小类收入' : '小类收入')
+                            : (isPlanned ? '计划小类支出' : '小类净支出'),
+                        countLabel: '共 ${items.length} 项小类',
+                        totalContentKey: 'subcategory-total',
+                        largeRadiusInset: 18.0,
+                        totalTitleFontWeight: FontWeight.w600,
+                        countLabelColor: colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.8),
                       ),
                       const Divider(height: 14),
                     ],
@@ -1079,7 +847,7 @@ class _FinanceCategoryDetailScreenState
   ) {
     final matches = <FinanceTransaction>[];
     for (final transaction in transactions) {
-      if (!transaction.isExpenseLike) continue;
+      if (!_matchesCategoryType(transaction)) continue;
       final matchesCategory =
           item.categoryUuid == financeUncategorizedCategoryFilterUuid
           ? transaction.categoryUuid == null ||
@@ -1128,14 +896,15 @@ class _FinanceCategoryDetailScreenState
     final subtitleParts = <String>[
       '${date.month}月${date.day}日',
       if (occurred != null && dateKey(occurred) == transaction.transactionDate)
-        '${occurred.hour.toString().padLeft(2, '0')}:'
-            '${occurred.minute.toString().padLeft(2, '0')}',
+        AppTimeFormats.clock(occurred),
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
       if (note?.isNotEmpty == true && note != title) note!,
     ];
     final isRefund = transaction.type == FinanceTransactionType.refund;
-    final amount = isRefund
+    final isPositive =
+        isRefund || transaction.type == FinanceTransactionType.income;
+    final amount = isPositive
         ? '+${formatFinanceAmount(transaction.amountMinor)}'
         : '−${formatFinanceAmount(transaction.amountMinor)}';
     return InkWell(
@@ -1150,7 +919,7 @@ class _FinanceCategoryDetailScreenState
             Icon(
               isRefund ? Icons.undo_rounded : Icons.receipt_long_outlined,
               size: 18,
-              color: isRefund
+              color: isPositive
                   ? colorScheme.primary
                   : colorScheme.onSurfaceVariant,
             ),
@@ -1176,7 +945,7 @@ class _FinanceCategoryDetailScreenState
             Text(
               amount,
               style: TextStyle(
-                color: isRefund ? colorScheme.primary : colorScheme.error,
+                color: isPositive ? colorScheme.primary : colorScheme.error,
                 fontWeight: FontWeight.w600,
               ),
             ),

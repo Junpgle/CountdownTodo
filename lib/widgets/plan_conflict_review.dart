@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
@@ -11,10 +10,12 @@ import '../screens/pomodoro_screen.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/plan_conflict_review_service.dart';
 import '../storage_service.dart';
+import '../utils/app_dialogs.dart';
 import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'plan_block_editor_sheet.dart';
+import '../utils/time_utils.dart';
 
 typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
   String username,
@@ -23,19 +24,8 @@ typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
   bool appOnly,
 });
 
-final Map<(String?, String), DateFormat> _planConflictReviewDateFormats = {};
-
-DateFormat _planConflictReviewDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planConflictReviewDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
-String _time(DateTime value) =>
-    _planConflictReviewDateFormat('MM-dd HH:mm').format(value);
-DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+String _time(DateTime value) => AppTimeFormats.compactDateTime(value);
+DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 String _sourceName(PlanBusySource source) => switch (source) {
   PlanBusySource.course => '课程',
   PlanBusySource.fixedSchedule => '固定日程',
@@ -166,7 +156,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
         _reading = false;
       });
       final now = widget.service.now;
-      var next = DateTime(now.year, now.month, now.day + 1);
+      var next = AppTimeFormats.localDayStartOffset(now, 1);
       for (final entry in result.entries) {
         final end = DateTime.fromMillisecondsSinceEpoch(entry.block.endTime);
         if (end.isAfter(now) && end.isBefore(next)) next = end;
@@ -201,7 +191,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
           if (mounted &&
               result.username == widget.username &&
               result.start == _date &&
-              result.end == DateTime(_date.year, _date.month, _date.day + 1)) {
+              result.end == AppTimeFormats.localDayStartOffset(_date, 1)) {
             setState(() {
               _result = result;
               _error = null;
@@ -348,11 +338,10 @@ Future<void> showPlanConflictReview({
     }
   } catch (error) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
-          content: Text(
-            error is PlanAvailabilityException ? error.message : '读取安排失败，请重试',
-          ),
+          content: Text(formatPlanErrorMessage(error, fallback: '读取安排失败，请重试')),
         ),
       );
     }
@@ -447,7 +436,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
         setState(() => _result = result);
         widget.onResult?.call(result);
         final now = widget.service.now;
-        var next = DateTime(now.year, now.month, now.day + 1);
+        var next = AppTimeFormats.localDayStartOffset(now, 1);
         for (final entry in result.entries) {
           final end = DateTime.fromMillisecondsSinceEpoch(entry.block.endTime);
           if (end.isAfter(now) && end.isBefore(next)) next = end;
@@ -585,7 +574,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
     final padding = MediaQuery.paddingOf(context);
     final colors = Theme.of(context).colorScheme;
     final result = _result;
-    final conflictDateFormat = _planConflictReviewDateFormat('M月d日');
+    final conflictDateFormat = AppTimeFormats.dateFormatter('M月d日');
     final rows = <Object>[];
     DateTime? group;
     for (final entry in result?.entries ?? const <PlanConflictEntry>[]) {

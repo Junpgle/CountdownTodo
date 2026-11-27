@@ -215,10 +215,7 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
     ];
   }
 
-  String _screenTimeDateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  String _screenTimeDateKey(DateTime date) => AppTimeFormats.date(date);
 
   Future<List<Map<String, dynamic>>> _loadQueryHabitData(
     DateTime from,
@@ -241,7 +238,7 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
         habit: goal,
         rules: goalRules,
         from: from,
-        to: DateTime(toExclusive.year, toExclusive.month, toExclusive.day - 1),
+        to: AppTimeFormats.localDayStartOffset(toExclusive, -1),
         periodLevel: true,
       );
       final planned = progress

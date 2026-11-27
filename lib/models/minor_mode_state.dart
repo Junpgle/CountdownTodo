@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import '../utils/json_value_parser.dart';
+import '../utils/calendar_date_math.dart';
+
 enum MinorModeSource {
   androidSystem,
   googleAgeSignals,
@@ -64,12 +67,8 @@ extension MinorAgeBandSystemMapping on MinorAgeBand {
 
   static MinorAgeBand fromBirthDate(DateTime birthDate, {DateTime? today}) {
     final currentDate = today ?? DateTime.now();
-    final current = DateTime(
-      currentDate.year,
-      currentDate.month,
-      currentDate.day,
-    );
-    final date = DateTime(birthDate.year, birthDate.month, birthDate.day);
+    final current = CalendarDateMath.dateOnly(currentDate);
+    final date = CalendarDateMath.dateOnly(birthDate);
     if (date.isAfter(current)) return MinorAgeBand.unknown;
 
     var age = current.year - date.year;
@@ -248,12 +247,5 @@ class MinorModeState {
     return systemSupported ? nativeSource : MinorModeSource.unsupported;
   }
 
-  static bool _asBool(Object? value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    if (value is String) {
-      return value == '1' || value.toLowerCase() == 'true';
-    }
-    return false;
-  }
+  static bool _asBool(Object? value) => JsonValueParser.toBool(value);
 }

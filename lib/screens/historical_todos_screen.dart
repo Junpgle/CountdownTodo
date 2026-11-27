@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,8 @@ import '../services/todo_trash_multi_restore_service.dart';
 import '../services/todo_trash_purge_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class _HistoricalTodoDateHeader {
   const _HistoricalTodoDateHeader(this.date, this.count);
@@ -100,16 +103,6 @@ class _HistoricalTodoDateLabel {
   final String? locale;
   final String value;
 }
-
-final Map<(String?, String), DateFormat> _historicalTodoDateFormats = {};
-
-DateFormat _historicalTodoDateFormat(
-  String? locale, {
-  String pattern = 'yyyy-MM-dd',
-}) => _historicalTodoDateFormats.putIfAbsent((
-  locale,
-  pattern,
-), () => DateFormat(pattern, locale));
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -279,7 +272,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           .map((g) => g.id)
           .toSet();
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
+      final today = CalendarDateMath.dateOnly(now);
       final historyTodos = <TodoItem>[];
       final skippedTodos = <TodoItem>[];
       final deletedTodos = <TodoItem>[];
@@ -522,11 +515,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       );
 
   DateTime _todoLocalDate(TodoItem todo) {
-    final local = DateTime.fromMillisecondsSinceEpoch(
+    final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
-    return DateTime(local.year, local.month, local.day);
+    );
+    return CalendarDateMath.dateOnly(local);
   }
 
   String _todoDayKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
@@ -561,8 +553,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       return cached.value;
     }
 
-    final value = _historicalTodoDateFormat(locale)
-        .format(DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal());
+    final value = AppTimeFormats.dateFormatter(
+      'yyyy-MM-dd',
+      locale: locale,
+    ).format(DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal());
     _dateLabels[item] = _HistoricalTodoDateLabel(
       updatedAt: updatedAt,
       locale: locale,
@@ -760,10 +754,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
   Future<bool> _confirmTrashMultiRestore(TodoTrashMultiRestorePlan plan) async {
     final preview = plan.preview;
-    final dateFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final dateRange = preview.firstDate == preview.lastDate
         ? dateFormat.format(preview.firstDate)
         : '${dateFormat.format(preview.firstDate)} – '
@@ -913,10 +904,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         preview.hasActiveSeriesMembers ? '清理该系列回收站记录？' : '删除该系列全部现存记录？',
       TodoTrashPurgeScope.recycleBin => '清空全部回收站？',
     };
-    final dateFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final firstDate = preview.firstDate;
     final lastDate = preview.lastDate;
     final dateRange = firstDate == null || lastDate == null
@@ -1241,10 +1229,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     if (group.skippedCount > 0) {
       countParts.add('${group.skippedCount} 期已跳过');
     }
-    final rangeFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final rangeFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final dateRange = group.firstDate == group.lastDate
         ? rangeFormat.format(group.firstDate)
         : '${rangeFormat.format(group.firstDate)} – ${rangeFormat.format(group.lastDate)}';
@@ -1399,14 +1384,11 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     if (!mounted) return;
 
-    final dateFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final dateRange = plan.preview.firstDate == plan.preview.lastDate
         ? dateFormat.format(plan.preview.firstDate)
         : '${dateFormat.format(plan.preview.firstDate)} – ${dateFormat.format(plan.preview.lastDate)}';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('恢复整组重复待办？'),
@@ -1477,10 +1459,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final scheme = theme.colorScheme;
     final busy = _busyId == item.id;
     final enabled = _busyId == null;
-    final time = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'HH:mm',
-    ).format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
+    final time = AppTimeFormats.dateFormatter('HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
     return ManagementCard(
       key: ValueKey(item.id),
       margin: EdgeInsets.only(
@@ -1671,23 +1651,32 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('待办深度清理'),
         actions: [
-          if (_tabController.index == 1)
-            IconButton(
-              icon: Icon(
-                _isTrashSelectionMode
-                    ? Icons.close_rounded
-                    : Icons.checklist_rounded,
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              if (_tabController.index == 1)
+                IconButton(
+                  style: floatingGlassPlainIconButtonStyle(),
+                  icon: Icon(
+                    _isTrashSelectionMode
+                        ? Icons.close_rounded
+                        : Icons.checklist_rounded,
+                  ),
+                  tooltip: _isTrashSelectionMode ? '退出选择' : '选择待办',
+                  onPressed: _busyId != null || _isLoadingSeriesSelection
+                      ? null
+                      : _toggleTrashSelectionMode,
+                ),
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: '重新扫描',
+                onPressed:
+                    _isLoading || _busyId != null ? null : () => _loadData(),
               ),
-              tooltip: _isTrashSelectionMode ? '退出选择' : '选择待办',
-              onPressed: _busyId != null || _isLoadingSeriesSelection
-                  ? null
-                  : _toggleTrashSelectionMode,
-            ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '重新扫描',
-            onPressed: _isLoading || _busyId != null ? null : () => _loadData(),
+            ],
           ),
+          const SizedBox(width: 8),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -1704,7 +1693,12 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                showFilterChips: true,
+                itemCount: 6,
+                itemHeight: 84,
+              )
             : _loadFailed
             ? ManagementPage(
                 topPadding: topBarHeight,

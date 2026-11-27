@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import 'time_estimation_service.dart';
 import 'timeline_service.dart';
 import 'pomodoro_service.dart';
 
@@ -64,62 +65,6 @@ class TaskCompletionPrediction {
 class TimelineMLService {
   static final TimelineMLService instance = TimelineMLService._();
   TimelineMLService._();
-
-  // Complexity keyword dictionaries for task analysis
-  static const _highComplexityKeywords = [
-    '复杂',
-    '项目',
-    '设计',
-    '开发',
-    '研究',
-    '调研',
-    '报告',
-    '论文',
-    '方案',
-    '架构',
-    '系统',
-    '分析',
-    '规划',
-    '重构',
-    '优化',
-    '算法',
-    '数据库',
-    '部署',
-    '迁移',
-    '实现',
-    '编写',
-    '撰写',
-    '策划',
-    '毕业',
-    '考试',
-    '竞赛',
-    '实验',
-    '建模',
-    '仿真',
-  ];
-
-  static const _lowComplexityKeywords = [
-    '购买',
-    '打印',
-    '发送',
-    '回复',
-    '简单',
-    '快速',
-    '顺便',
-    '清理',
-    '备份',
-    '下载',
-    '上传',
-    '提交',
-    '确认',
-    '浏览',
-    '签收',
-    '签到',
-    '打卡',
-    '取快递',
-    '买东西',
-    '发消息',
-  ];
 
   /// Generate ML-based insights for the timeline screen
   Future<List<TimelineMLInsight>> generateInsights({
@@ -276,8 +221,7 @@ class TimelineMLService {
       final byDay = <String, _HistoricalDayAccumulator>{};
       for (final r in records) {
         final date = DateTime.fromMillisecondsSinceEpoch(r.createdAt);
-        final key =
-            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        final key = AppTimeFormats.date(date);
         final day = byDay.putIfAbsent(key, () => _HistoricalDayAccumulator());
         day.focusSeconds += r.effectiveDuration;
         day.totalSessions++;
@@ -450,10 +394,10 @@ class TimelineMLService {
 
     // Analyze task complexity
     final lowerTitle = taskTitle.toLowerCase();
-    bool isHighComplexity = _highComplexityKeywords.any(
+    bool isHighComplexity = TimeEstimationService.highComplexityKeywords.any(
       (kw) => lowerTitle.contains(kw),
     );
-    bool isLowComplexity = _lowComplexityKeywords.any(
+    bool isLowComplexity = TimeEstimationService.lowComplexityKeywords.any(
       (kw) => lowerTitle.contains(kw),
     );
 

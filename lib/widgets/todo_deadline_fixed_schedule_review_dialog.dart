@@ -1,17 +1,18 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/todo_deadline_fixed_schedule_review_service.dart';
+import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 Future<bool?> showTodoDeadlineFixedScheduleReviewDialog(
   BuildContext context,
   TodoDeadlineFixedScheduleReview review,
 ) {
   if (!review.needsReview) return Future.value(true);
-  return showDialog<bool>(
+  return showAppDialog<bool>(
     context: context,
     builder: (dialogContext) {
       final colors = Theme.of(dialogContext).colorScheme;
@@ -225,19 +226,16 @@ class _ReviewEntry extends StatelessWidget {
   }
 }
 
-final DateFormat _reviewDayFormat = DateFormat('M月d日');
-final DateFormat _reviewTimeFormat = DateFormat('M月d日 HH:mm');
-
 String _deadlineLabel(TodoItem todo) {
   final due = todo.dueDate?.toLocal();
   if (due == null) return '未设置期限';
   return todo.isDateOnly
-      ? '${_reviewDayFormat.format(due)} 内完成'
-      : '${_reviewTimeFormat.format(due)} 前完成';
+      ? '${AppTimeFormats.format(due, 'M月d日')} 内完成'
+      : '${AppTimeFormats.format(due, 'M月d日 HH:mm')} 前完成';
 }
 
 String _formatDay(DateTime? value) =>
-    value == null ? '日期待定' : _reviewDayFormat.format(value);
+    value == null ? '日期待定' : AppTimeFormats.format(value, 'M月d日');
 
 String _formatTime(DateTime? value) =>
-    value == null ? '时间待定' : _reviewTimeFormat.format(value);
+    value == null ? '时间待定' : AppTimeFormats.format(value, 'M月d日 HH:mm');

@@ -5,6 +5,7 @@ import 'package:countdown_todo/features/finance/screens/ai_usage_cost_screen.dar
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,7 +30,8 @@ Future<void> _pumpLoaded(WidgetTester tester, Widget screen) async {
   // The full finance suite can load the database-backed screen more slowly
   // than this test file does on its own.
   for (var attempt = 0; attempt < 500; attempt++) {
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty) {
       await tester.pumpAndSettle();
       return;
     }

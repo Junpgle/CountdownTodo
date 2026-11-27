@@ -16,6 +16,7 @@ import '../services/habit_stamp_animation_queue.dart';
 import '../services/habit_sleep_coaching_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/time_utils.dart';
 import '../../../services/liquid_glass_effect_service.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import 'habit_drink_picker_sheet.dart';
@@ -83,11 +84,10 @@ class HabitCard extends StatefulWidget {
 class _HabitCardState extends State<HabitCard> {
   static const double _stampAnimationVisibleFraction = 0.2;
 
-  final Key _visibilityDetectorKey = UniqueKey();
   bool _busy = false;
   bool _isPressed = false;
   bool _justStamped = false;
-  double _visibleFraction = 0;
+  bool _stampCheckPostFrameScheduled = false;
   int? _stampClaimToken;
   Timer? _stampSettleTimer;
   ScrollNotificationObserverState? _scrollObserver;
@@ -95,10 +95,7 @@ class _HabitCardState extends State<HabitCard> {
 
   ColorScheme get _colors => Theme.of(context).colorScheme;
 
-  bool get _canPlayStampAnimation =>
-      TickerMode.valuesOf(context).enabled &&
-      _visibleFraction >= _stampAnimationVisibleFraction &&
-      _isTrulyVisibleOnScreen();
+  bool get _canPlayStampAnimation => _isTrulyVisibleOnScreen();
 
   bool _isTrulyVisibleOnScreen() {
     if (!mounted) return false;
@@ -189,8 +186,15 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   void _handleScrollNotification(ScrollNotification notification) {
+    if (!HabitStampAnimationQueue.hasPending(
+      habitUuid: widget.goal.uuid,
+      logicalDate: widget.dayProgress.logicalDate,
+    )) {
+      return;
+    }
     if (notification is ScrollEndNotification ||
-        notification is UserScrollNotification) {
+        notification is UserScrollNotification ||
+        notification is ScrollUpdateNotification) {
       _scheduleStampAnimationCheck();
     }
   }
@@ -210,7 +214,6 @@ class _HabitCardState extends State<HabitCard> {
       );
       _stampSettleTimer?.cancel();
       _justStamped = false;
-      _visibleFraction = 0;
     }
 
     if (oldWidget.dayProgress.status == HabitDayStatus.met &&
@@ -234,12 +237,6 @@ class _HabitCardState extends State<HabitCard> {
     }
   }
 
-  void _onVisibilityChanged(VisibilityInfo info) {
-    if (!mounted) return;
-    _visibleFraction = info.visibleFraction;
-    _scheduleStampAnimationCheck();
-  }
-
   void _scheduleStampAnimationCheck() {
     if (!mounted || _justStamped) return;
 
@@ -252,8 +249,31 @@ class _HabitCardState extends State<HabitCard> {
 
     _stampSettleTimer?.cancel();
 
-    if (!_canPlayStampAnimation) return;
+    if (_canPlayStampAnimation) {
+      _armPendingStampAnimation();
+      return;
+    }
 
+    // Geometry or TickerMode may finish updating at the end of the current
+    // frame (e.g. after Offstage toggle, route settle, or jumpTo scroll).
+    if (_stampCheckPostFrameScheduled) return;
+    _stampCheckPostFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stampCheckPostFrameScheduled = false;
+      if (!mounted || _justStamped) return;
+      if (!HabitStampAnimationQueue.hasPending(
+        habitUuid: widget.goal.uuid,
+        logicalDate: widget.dayProgress.logicalDate,
+      )) {
+        return;
+      }
+      if (!_canPlayStampAnimation) return;
+      _armPendingStampAnimation();
+    });
+  }
+
+  void _armPendingStampAnimation() {
+    _stampSettleTimer?.cancel();
     // Unit test environments zero out the updateInterval for immediate verification.
     final isSynchronousTest =
         VisibilityDetectorController.instance.updateInterval == Duration.zero;
@@ -325,9 +345,7 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   bool _sameLogicalDate(DateTime first, DateTime second) =>
-      first.year == second.year &&
-      first.month == second.month &&
-      first.day == second.day;
+      AppTimeFormats.isSameDay(first, second);
 
   @override
   void dispose() {
@@ -345,110 +363,106 @@ class _HabitCardState extends State<HabitCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final statusColor = _statusColor(status);
 
-    return VisibilityDetector(
-      key: _visibilityDetectorKey,
-      onVisibilityChanged: _onVisibilityChanged,
-      child: GestureDetector(
-        onTapDown: (_) {
-          if (widget.onTap != null) setState(() => _isPressed = true);
-        },
-        onTapUp: (_) {
-          if (widget.onTap != null) {
-            setState(() => _isPressed = false);
-          }
-        },
-        onTap: widget.onTap,
-        onTapCancel: () {
-          if (widget.onTap != null) setState(() => _isPressed = false);
-        },
-        child: AnimatedScale(
-          scale: _isPressed ? 0.96 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          child: OptionalLiquidGlassCard(
-            key: widget.animationKey,
-            margin: EdgeInsets.symmetric(vertical: widget.compact ? 2 : 6),
-            borderRadius: widget.compact ? 18 : 24,
-            tint: statusColor.withValues(alpha: 0.16),
-            isDark: isDark,
-            fallbackDecoration: BoxDecoration(
-              color: _colors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(widget.compact ? 18 : 24),
-              border: Border.all(
-                color: _colors.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _colors.shadow.withValues(alpha: 0.04),
-                  blurRadius: AppPlatform.isAndroid
-                      ? (widget.compact ? 8 : 12)
-                      : (widget.compact ? 16 : 24),
-                  offset: AppPlatform.isAndroid
-                      ? const Offset(0, 4)
-                      : (widget.compact
-                            ? const Offset(0, 4)
-                            : const Offset(0, 8)),
-                ),
-              ],
+    return GestureDetector(
+      onTapDown: (_) {
+        if (widget.onTap != null) setState(() => _isPressed = true);
+      },
+      onTapUp: (_) {
+        if (widget.onTap != null) {
+          setState(() => _isPressed = false);
+        }
+      },
+      onTap: widget.onTap,
+      onTapCancel: () {
+        if (widget.onTap != null) setState(() => _isPressed = false);
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        child: OptionalLiquidGlassCard(
+          key: widget.animationKey,
+          margin: EdgeInsets.symmetric(vertical: widget.compact ? 2 : 6),
+          borderRadius: widget.compact ? 18 : 24,
+          tint: statusColor.withValues(alpha: 0.16),
+          isDark: isDark,
+          fallbackDecoration: BoxDecoration(
+            color: _colors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(widget.compact ? 18 : 24),
+            border: Border.all(
+              color: _colors.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
+              width: 1,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(widget.compact ? 18 : 24),
-              child: Stack(
-                children: [
-                  // 1. 底层水印印章：右下角出血位，超出边界被 ClipRRect 裁切，形成半透明防伪印质感
-                  if (_justStamped || status == HabitDayStatus.met)
-                    Positioned(
-                      right: widget.compact ? -18 : -22,
-                      bottom: widget.compact ? -16 : -20,
-                      child: IgnorePointer(
-                        child: HabitStampBadge(
-                          animate: _justStamped,
-                          text: '已达成',
-                          size: widget.compact ? 116 : 136,
-                          opacity: 0.22,
-                          color: _colors.cdtSuccess,
-                          onAnimationComplete: () {
-                            if (mounted && _justStamped) {
-                              setState(() => _justStamped = false);
-                            }
-                          },
-                        ),
+            boxShadow: [
+              BoxShadow(
+                color: _colors.shadow.withValues(alpha: 0.04),
+                blurRadius: AppPlatform.isAndroid
+                    ? (widget.compact ? 8 : 12)
+                    : (widget.compact ? 16 : 24),
+                offset: AppPlatform.isAndroid
+                    ? const Offset(0, 4)
+                    : (widget.compact
+                          ? const Offset(0, 4)
+                          : const Offset(0, 8)),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(widget.compact ? 18 : 24),
+            child: Stack(
+              children: [
+                // 1. 底层水印印章：右下角出血位，超出边界被 ClipRRect 裁切，形成半透明防伪印质感
+                if (_justStamped || status == HabitDayStatus.met)
+                  Positioned(
+                    right: widget.compact ? -18 : -22,
+                    bottom: widget.compact ? -16 : -20,
+                    child: IgnorePointer(
+                      child: HabitStampBadge(
+                        animate: _justStamped,
+                        text: '已达成',
+                        size: widget.compact ? 116 : 136,
+                        opacity: 0.22,
+                        color: _colors.cdtSuccess,
+                        onAnimationComplete: () {
+                          if (mounted && _justStamped) {
+                            setState(() => _justStamped = false);
+                          }
+                        },
                       ),
                     ),
-
-                  // 2. 前景主体：文字、进度、操作按钮（在水印上层渲染，信息绝不被遮挡）
-                  Padding(
-                    padding: widget.compact
-                        ? const EdgeInsets.fromLTRB(12, 12, 12, 10)
-                        : const EdgeInsets.fromLTRB(16, 18, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildHeader(progress, status),
-                        if (widget.goal.sourceType !=
-                                HabitSourceType.timeCheckIn &&
-                            widget.goal.sourceType !=
-                                HabitSourceType.recurringTodo) ...[
-                          SizedBox(height: widget.compact ? 8 : 14),
-                          _buildProgressBar(progress, status),
-                        ],
-                        SizedBox(height: widget.compact ? 8 : 12),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            // 吸收操作按钮区域的点击手势，阻止向上冒泡触发卡片全局详情跳转
-                          },
-                          onTapDown: (_) {},
-                          onTapUp: (_) {},
-                          onTapCancel: () {},
-                          child: _buildActions(progress, status),
-                        ),
-                      ],
-                    ),
                   ),
-                ],
-              ),
+
+                // 2. 前景主体：文字、进度、操作按钮（在水印上层渲染，信息绝不被遮挡）
+                Padding(
+                  padding: widget.compact
+                      ? const EdgeInsets.fromLTRB(12, 12, 12, 10)
+                      : const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(progress, status),
+                      if (widget.goal.sourceType !=
+                              HabitSourceType.timeCheckIn &&
+                          widget.goal.sourceType !=
+                              HabitSourceType.recurringTodo) ...[
+                        SizedBox(height: widget.compact ? 8 : 14),
+                        _buildProgressBar(progress, status),
+                      ],
+                      SizedBox(height: widget.compact ? 8 : 12),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          // 吸收操作按钮区域的点击手势，阻止向上冒泡触发卡片全局详情跳转
+                        },
+                        onTapDown: (_) {},
+                        onTapUp: (_) {},
+                        onTapCancel: () {},
+                        child: _buildActions(progress, status),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -466,52 +480,56 @@ class _HabitCardState extends State<HabitCard> {
         : _colors.onSurfaceVariant;
     final statusColor = _statusColor(status);
 
-    return Row(
-      children: [
-        Container(
-          width: widget.compact ? 32 : 40,
-          height: widget.compact ? 32 : 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: statusColor.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            widget.goal.icon.isNotEmpty ? widget.goal.icon : '🎯',
-            style: TextStyle(fontSize: widget.compact ? 18 : 22),
-          ),
-        ),
-        SizedBox(width: widget.compact ? 8 : 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.goal.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: widget.compact ? 14 : 16,
-                  fontWeight: FontWeight.w700,
-                  color: textColor,
-                ),
+    return MergeSemantics(
+      child: Row(
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: widget.compact ? 32 : 40,
+              height: widget.compact ? 32 : 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 1),
-              Text(
-                _subtitle(status, progress),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: widget.compact ? 11 : 12,
-                  color: subColor,
-                ),
+              child: Text(
+                widget.goal.icon.isNotEmpty ? widget.goal.icon : '🎯',
+                style: TextStyle(fontSize: widget.compact ? 18 : 22),
               ),
-            ],
+            ),
           ),
-        ),
-        SizedBox(width: widget.compact ? 6 : 8),
-        _buildStatusBadge(status),
-      ],
+          SizedBox(width: widget.compact ? 8 : 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.goal.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: widget.compact ? 14 : 16,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _subtitle(status, progress),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: widget.compact ? 11 : 12,
+                    color: subColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: widget.compact ? 6 : 8),
+          _buildStatusBadge(status),
+        ],
+      ),
     );
   }
 
@@ -743,6 +761,7 @@ class _HabitCardState extends State<HabitCard> {
               ? FilledButton.tonal(
                   onPressed: null,
                   style: FilledButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     padding: EdgeInsets.symmetric(
                       vertical: widget.compact ? 8 : 12,
                     ),
@@ -777,6 +796,7 @@ class _HabitCardState extends State<HabitCard> {
                       child: FilledButton.tonal(
                         onPressed: () {},
                         style: FilledButton.styleFrom(
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           padding: EdgeInsets.symmetric(
                             vertical: widget.compact ? 8 : 12,
                           ),
@@ -1078,8 +1098,10 @@ class _HabitCardState extends State<HabitCard> {
         ? value.round().toString()
         : value.toString();
     final chipLabel = label ?? (unit.isNotEmpty ? '$text $unit' : text);
+    final chipRadius = BorderRadius.circular(widget.compact ? 10 : 12);
     return HabitCelebrationTrigger(
       burstColor: _colors.primary,
+      borderRadius: chipRadius,
       holdHint: '长按打卡 $chipLabel',
       semanticLabel: '${widget.goal.name}，增加 $chipLabel',
       enabled: !_busy,
@@ -1088,14 +1110,13 @@ class _HabitCardState extends State<HabitCard> {
         child: FilledButton.tonal(
           onPressed: () {},
           style: FilledButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             padding: EdgeInsets.symmetric(
               horizontal: widget.compact ? 12 : 16,
               vertical: widget.compact ? 6 : 8,
             ),
             minimumSize: Size(0, widget.compact ? 32 : 36),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: chipRadius),
           ),
           child: Text(chipLabel),
         ),
@@ -1213,6 +1234,7 @@ class _HabitCardState extends State<HabitCard> {
                 child: FilledButton.tonal(
                   onPressed: () {},
                   style: FilledButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     padding: EdgeInsets.symmetric(
                       vertical: widget.compact ? 8 : 12,
                     ),

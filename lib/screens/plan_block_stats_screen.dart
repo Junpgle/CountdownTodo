@@ -6,30 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../models/plan_availability.dart';
 import '../services/plan_review_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import 'course_screens.dart';
-
-String? _reviewDateLocale;
-final _reviewDateFormats = <String, DateFormat>{};
-
-DateFormat _reviewDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_reviewDateLocale != locale) {
-    _reviewDateLocale = locale;
-    _reviewDateFormats.clear();
-  }
-  return _reviewDateFormats.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
+import '../utils/calendar_date_math.dart';
 
 String reviewDuration(int seconds) {
   if (seconds == 0) return '0分钟';
@@ -44,13 +32,14 @@ String reviewDuration(int seconds) {
 
 String _date(int ms) {
   if (ms <= 0 || ms > 8640000000000000) return '时间待核对';
-  return _reviewDateFormat('M/d HH:mm')
-      .format(DateTime.fromMillisecondsSinceEpoch(ms));
+  return AppTimeFormats.format(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+    'M/d HH:mm',
+  );
 }
 
 String _period(PlanReviewEntry e) => '${_date(e.start)} — ${_date(e.end)}';
-String _message(Object e) =>
-    e is StateError ? e.message.toString() : e.toString();
+String _message(Object e) => formatPlanErrorMessage(e);
 String _label(PlanReviewFilter f) => switch (f) {
   PlanReviewFilter.plans => '真实规划',
   PlanReviewFilter.ended => '已结束规划',
@@ -196,7 +185,7 @@ class _PlanBlockStatsScreenState
         _current.day - _current.weekday + 1,
       ),
       2 => DateTime(_current.year, _current.month, 1),
-      _ => DateTime(_current.year, _current.month, _current.day),
+      _ => CalendarDateMath.dateOnly(_current),
     };
     return DateTimeRange(
       start: start,
@@ -211,11 +200,11 @@ class _PlanBlockStatsScreenState
   }
 
   String get _rangeLabel => _dimension == 2
-      ? _reviewDateFormat('yyyy年M月').format(_current)
+      ? AppTimeFormats.format(_current, 'yyyy年M月')
       : _dimension == 0
-      ? _reviewDateFormat('yyyy年M月d日').format(_current)
-      : '${_reviewDateFormat('M/d').format(_range.start)} — '
-            '${_reviewDateFormat('M/d').format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1))}';
+      ? AppTimeFormats.format(_current, 'yyyy年M月d日')
+      : '${AppTimeFormats.format(_range.start, 'M/d')} — '
+            '${AppTimeFormats.format(AppTimeFormats.localDayStartOffset(_range.end, -1), 'M/d')}';
   @override
   void initState() {
     _current = widget.initialDate ?? _now;
@@ -392,7 +381,7 @@ class _PlanBlockStatsScreenState
                               message: _rangeLabel,
                               child: Text(
                                 compactDate && _dimension == 0
-                                    ? _reviewDateFormat('M月d日').format(_current)
+                                    ? AppTimeFormats.format(_current, 'M月d日')
                                     : _rangeLabel,
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium,
@@ -407,9 +396,16 @@ class _PlanBlockStatsScreenState
                         ],
                       ),
                       if (_loading && _data == null)
-                        const Padding(
-                          padding: EdgeInsets.all(40),
-                          child: Center(child: CircularProgressIndicator()),
+                        const AppSkeletonDashboardPage(
+                          shrinkWrap: true,
+                          showMetricGrid: true,
+                          metricCount: 4,
+                          showChart: true,
+                          listCount: 3,
+                          wideLayout:
+                              AppSkeletonDashboardWideLayout.metricsAndGrid,
+                          wideBreakpoint: 720,
+                          wideListColumns: 2,
                         )
                       else if (_error != null)
                         _ReviewError(error: _error!, retry: load)
@@ -692,7 +688,7 @@ class _PlanBlockStatsScreenState
       return cached;
     }
 
-    final dateFormat = _reviewDateFormat('M/d');
+    final dateFormat = AppTimeFormats.dateFormatter('M/d');
     var maxSeconds = 1;
     final points = <_ReviewTrendPoint>[];
     for (var i = 0; i < summary.days.length; i++) {
@@ -750,7 +746,7 @@ class _PlanBlockStatsScreenState
                   onTap: () => _open(
                     PlanReviewFilter.focus,
                     start: date,
-                    end: DateTime(date.year, date.month, date.day + 1),
+                    end: AppTimeFormats.localDayStartOffset(date, 1),
                     title: '${point.dateLabel}专注明细',
                   ),
                   child: Column(
@@ -1125,8 +1121,8 @@ class _PlanReviewDetailScreenState
                       Text(
                         widget.cumulative
                             ? '累计有效记录 · 按唯一规划关联'
-                            : '${_reviewDateFormat('yyyy/M/d').format(widget.start)} — '
-                                  '${_reviewDateFormat('yyyy/M/d').format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1))}',
+                            : '${AppTimeFormats.format(widget.start, 'yyyy/M/d')} — '
+                                  '${AppTimeFormats.format(AppTimeFormats.localDayStartOffset(widget.end, -1), 'yyyy/M/d')}',
                       ),
                       if (focusFilters.contains(widget.filter))
                         Padding(
@@ -1276,8 +1272,7 @@ String _status(Object? value) => switch (value) {
   _ => '待核对',
 };
 void _notice(BuildContext context, String message) =>
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
 Future<void> _scope(BuildContext context) => showAppDialog<void>(
   context: context,
   builder: (context) => AlertDialog(

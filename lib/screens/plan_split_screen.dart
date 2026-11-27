@@ -13,6 +13,7 @@ import '../services/plan_availability_preferences.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_split_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/app_dialogs.dart';
 import '../widgets/plan_availability_panel.dart';
 
 /// Restoring a draft never restores permission to relax calendar/avoidance checks.
@@ -210,7 +211,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
     String? error;
     final maximumText = TextEditingController(text: '$maximum');
     ModalRoute<dynamic>? route;
-    final updated = await showDialog<PlanSplitQuery>(
+    final updated = await showAppDialog<PlanSplitQuery>(
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, update) {

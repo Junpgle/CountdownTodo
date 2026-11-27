@@ -38,10 +38,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final tomorrowEndMs = DateTime(
-      now.year,
-      now.month,
-      now.day + 2,
+    final tomorrowEndMs = AppTimeFormats.localDayStartOffset(
+      now,
+      2,
     ).millisecondsSinceEpoch;
     final hasActivePlans = planBlocks.any(
       (block) =>
@@ -570,6 +569,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           _countdownsDataRevision++;
           _countdownsNotifier.value = allCountdowns;
         }
+        if (loadCountdowns) {
+          unawaited(_reconcilePendingCompletedCountdowns());
+        }
         if (mathChanged) {
           _mathStats = mathStats;
           _mathStatsNotifier.value = mathStats;
@@ -609,7 +611,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           );
         }
 
-        _debouncedSyncTodoNotification(todosChanged);
+        _debouncedSyncTodoNotification(todosChanged || countdownsChanged);
         if (domains == null || domains.contains(DataRefreshDomain.all)) {
           _debouncedFetchTeamPending();
           _debouncedFetchAnnouncements();
@@ -618,6 +620,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         _debouncedUpdateTodoWidget(allTodos, todosChanged);
         _debouncedScheduleAllReminders(
           todosChanged ||
+              countdownsChanged ||
               coursesChanged ||
               plansChanged ||
               fixedSchedulesChanged,
@@ -938,7 +941,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
   void _syncTodoNotification() {
     DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime today = CalendarDateMath.dateOnly(now);
 
     List<TodoItem> activeTodos = _todos.where((t) {
       if (t.dueDate == null) return true;
@@ -999,6 +1002,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         ReminderScheduleService.scheduleAll(
           todos: _todos,
           courses: const <CourseItem>[],
+          countdowns: _countdowns,
           loadCourses: (from, to) => CourseService.getCoursesForDateRange(
             widget.username,
             from: from,

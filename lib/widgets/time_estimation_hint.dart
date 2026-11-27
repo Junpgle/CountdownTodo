@@ -58,8 +58,10 @@ Future<void> showTimeEstimationEvidence(
     }
   } on TimeEstimationAccountChanged {
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('账号已切换，请重新打开当前页面')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('账号已切换，请重新打开当前页面')),
+      );
     }
     return;
   }

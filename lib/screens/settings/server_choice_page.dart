@@ -251,25 +251,14 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
       return;
     }
 
-    final confirm = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('切换接口线路'),
-        content: const Text('两条线路使用同一套阿里云账户和数据。确定切换吗？保存后当前请求会使用新线路，实时同步会自动重连。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('切换线路'),
-          ),
-        ],
-      ),
+    final confirm = await AppDialogs.confirm(
+      context,
+      title: '切换接口线路',
+      message: '两条线路使用同一套阿里云账户和数据。确定切换吗？保存后当前请求会使用新线路，实时同步会自动重连。',
+      confirmLabel: '切换线路',
     );
 
-    if (confirm != true || !mounted) return;
+    if (!confirm || !mounted) return;
 
     final authorized = await MinorModeService.instance.authorizeAction(
       MinorModeAction.sensitive,

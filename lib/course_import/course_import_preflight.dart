@@ -303,6 +303,5 @@ class CourseImportPreflight {
     return result;
   }
 
-  static DateTime _dateOnly(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
+  static DateTime _dateOnly(DateTime value) => CalendarDateMath.dateOnly(value);
 }

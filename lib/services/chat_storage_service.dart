@@ -12,6 +12,8 @@ import 'legacy_ai_prompt_sanitizer.dart';
 import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
 import 'secure_storage_service.dart';
+import '../utils/text_utils.dart';
+import '../utils/time_utils.dart';
 
 class ChatSession {
   final String id;
@@ -39,14 +41,12 @@ class ChatSession {
     return ChatSession(
       id: json['id'] as String,
       title: json['title'] as String,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(
+      createdAt: AppTimeFormats.localFromServerTimestamp(
         json['createdAt'] as int,
-        isUtc: true,
-      ).toLocal(),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+      ),
+      updatedAt: AppTimeFormats.localFromServerTimestamp(
         json['updatedAt'] as int,
-        isUtc: true,
-      ).toLocal(),
+      ),
     );
   }
 }
@@ -105,14 +105,7 @@ class ChatStorageService {
   /// Removes the appended text protocol when a provider uses native tools.
   /// Older user prompts may still contain the v2 section after migration.
   static String removeCurrentTextProtocol(String prompt) {
-    return prompt
-        .replaceFirst(
-          RegExp(
-            r'(?:^|\n)【CDT 当前聊天协议 v\d+ \| CDT_CHAT_PROTOCOL_V\d+】[\s\S]*$',
-          ),
-          '',
-        )
-        .trim();
+    return prompt.replaceFirst(_rxCached26_1, '').trim();
   }
 
   static String ensureCurrentPromptProtocol(String prompt) {
@@ -422,9 +415,11 @@ class ChatStorageService {
         );
         final fallbackTitle = firstUserMsg.content.trim();
         if (fallbackTitle.isNotEmpty) {
-          session.title = fallbackTitle.length > 20
-              ? '${fallbackTitle.substring(0, 20)}...'
-              : fallbackTitle;
+          session.title = AppTextUtils.truncate(
+            fallbackTitle,
+            20,
+            ellipsis: '...',
+          );
           session.updatedAt = DateTime.now();
           await saveSessions(sessions);
         }
@@ -675,3 +670,8 @@ class ChatStorageService {
 
   static Future<void> resetToolBudget() => setToolBudget(AiToolBudget.standard);
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached26_1 = RegExp(
+  r'(?:^|\n)【CDT 当前聊天协议 v\d+ \| CDT_CHAT_PROTOCOL_V\d+】[\s\S]*$',
+);

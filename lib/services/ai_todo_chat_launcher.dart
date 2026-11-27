@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/chat_message.dart';
@@ -16,8 +15,6 @@ import 'minor_mode_service.dart';
 import '../utils/app_dialogs.dart';
 
 class AiTodoChatLauncher {
-  static final DateFormat _localDateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
-
   static Future<void> open(
     BuildContext context, {
     required String username,
@@ -214,13 +211,13 @@ class AiTodoChatLauncher {
 
   static String _formatEpochMillis(int? value) {
     if (value == null) return '';
-    return _localDateTimeFormat.format(
+    return AppTimeFormats.fullDateTime(
       DateTime.fromMillisecondsSinceEpoch(value).toLocal(),
     );
   }
 
   static String _formatDateTime(DateTime? value) {
     if (value == null) return '';
-    return _localDateTimeFormat.format(value.toLocal());
+    return AppTimeFormats.fullDateTime(value.toLocal());
   }
 }

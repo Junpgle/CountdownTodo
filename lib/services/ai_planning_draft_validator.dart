@@ -1,3 +1,5 @@
+import '../utils/time_utils.dart';
+
 abstract final class AiPlanningDraftValidator {
   static final RegExp _fromNowRequestPattern = RegExp(
     r'从现在|现在开始|现在起|剩下的时间|剩余时间|余下的时间|今天剩余|今晚剩下',
@@ -129,10 +131,5 @@ abstract final class AiPlanningDraftValidator {
     return DateTime.tryParse(value.trim().replaceFirst(' ', 'T'));
   }
 
-  static String _format(DateTime value) =>
-      '${value.year.toString().padLeft(4, '0')}-'
-      '${value.month.toString().padLeft(2, '0')}-'
-      '${value.day.toString().padLeft(2, '0')} '
-      '${value.hour.toString().padLeft(2, '0')}:'
-      '${value.minute.toString().padLeft(2, '0')}';
+  static String _format(DateTime value) => AppTimeFormats.fullDateTime(value);
 }

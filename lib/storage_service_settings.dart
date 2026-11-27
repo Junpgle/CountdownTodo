@@ -338,11 +338,7 @@ mixin _StorageSettings on _StorageServiceBase {
   Future<SemesterInfo?> getSemesterByDate(DateTime date) async {
     final semesters = await getSemesters();
     for (final semester in semesters) {
-      final start = DateTime(
-        semester.startDate.year,
-        semester.startDate.month,
-        semester.startDate.day,
-      );
+      final start = CalendarDateMath.dateOnly(semester.startDate);
       final end = semester.endDate != null
           ? DateTime(
               semester.endDate!.year,
@@ -370,10 +366,7 @@ mixin _StorageSettings on _StorageServiceBase {
     final prefs = await StorageService.prefs;
     int? timestamp = prefs.getInt("${keyLastAutoSync}_$username");
     if (timestamp != null) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        timestamp,
-        isUtc: true,
-      ).toLocal();
+      return AppTimeFormats.localFromServerTimestamp(timestamp);
     }
     return null;
   }

@@ -1018,7 +1018,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                               ),
                             ),
                             subtitle: Text(
-                              _todoChatDateFormat('MM/dd HH:mm')
+                              AppTimeFormats.dateFormatter('MM/dd HH:mm')
                                   .format(session.updatedAt),
                               style: TextStyle(
                                 fontSize: 11,
@@ -1076,28 +1076,15 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   Future<void> _deleteAllSessions(BuildContext sidebarCtx) async {
-    final confirmed = await showAppDialog<bool>(
-      context: sidebarCtx,
-      builder: (ctx) => AlertDialog(
-        title: const Text('彻底清空对话历史'),
-        content: const Text('确定要删除所有的历史对话吗？此操作无法撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            child: const Text('全部删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      sidebarCtx,
+      title: '彻底清空对话历史',
+      message: '确定要删除所有的历史对话吗？此操作无法撤销。',
+      confirmLabel: '全部删除',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await ChatStorageService.clearAllSessions();
       final newSession = await ChatStorageService.openEmptySession();
       if (!mounted || !sidebarCtx.mounted) return;

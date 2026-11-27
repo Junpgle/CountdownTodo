@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -9,9 +10,8 @@ import 'dart:async';
 import '../widgets/home_dashboard_banner_layout.dart';
 import '../widgets/home_drawer_menu.dart';
 import '../widgets/ai_water_border.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/manual_sync_dialog.dart';
-
-import 'package:intl/intl.dart';
 
 import 'dart:math';
 import 'dart:convert';
@@ -26,6 +26,7 @@ import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 import '../utils/pomodoro_display_tick_schedule.dart';
 import '../utils/app_scroll_behavior.dart';
+import '../utils/text_utils.dart';
 
 // 引入服务和模型
 import '../models.dart';
@@ -38,6 +39,7 @@ import '../services/api_service.dart';
 import '../services/lan_sync_service.dart';
 import '../services/github_resource_service.dart';
 import '../services/background_notification_service.dart';
+import '../services/countdown_reminder_helper.dart';
 import '../services/notification_service.dart';
 import '../services/todo_notification_policy.dart';
 import '../services/todo_editor_save_service.dart';
@@ -76,6 +78,7 @@ import 'settings/pages/ai_assistant_settings_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/chat_storage_service.dart';
 import '../services/daily_ai_suggestion_service.dart';
+import '../services/liquid_glass_effect_service.dart';
 import '../widgets/daily_ai_suggestion_card.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../utils/app_platform.dart';
@@ -148,6 +151,7 @@ import '../widgets/onboarding_checklist_card.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/app_dialogs.dart';
 import 'help/feature_explorer_screen.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';
@@ -159,6 +163,8 @@ part 'home_dashboard_data.dart';
 part 'home_dashboard_persistence.dart';
 part 'home_dashboard_wallpaper.dart';
 part 'home_dashboard_view.dart';
+part 'home_dashboard_view_actions.dart';
+part 'home_dashboard_view_widgets.dart';
 
 const _homeFocusTabIndex = 4;
 const String _defaultWallpaperAsset = 'assets/images/default_wallpaper.webp';
@@ -197,7 +203,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int _dashboardCourseDataRefreshRevision = 0;
 
   bool _hasUsagePermission = true;
-  bool _isSyncing = false;
+  final ValueNotifier<bool> _isSyncingNotifier = ValueNotifier<bool>(false);
+  bool get _isSyncing => _isSyncingNotifier.value;
   String? _wallpaperUrl = _defaultWallpaperAsset;
   Color? _wallpaperDominantColor;
   String? _extractedWallpaperUrl;
@@ -278,6 +285,14 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _todoHistoryKey = GlobalKey();
   final GlobalKey _countdownHistoryKey = GlobalKey();
   final GlobalKey _todayPlanChartKey = GlobalKey();
+  final GlobalKey _dashboardBackdropViewportKey = GlobalKey();
+  final PreblurredWallpaperController _preblurredWallpaperController =
+      PreblurredWallpaperController();
+  ImageProvider<Object>? _lastPreblurredProvider;
+  String? _lastPreblurredUrl;
+  Size _lastPreblurredViewportSize = Size.zero;
+  bool _lastPreblurredShowWallpaper = false;
+  bool _preblurredSyncScheduled = false;
   // 独立刷新信号，避免单一计数器同时触发多个重型模块
   final ValueNotifier<int> _scheduleRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
@@ -333,10 +348,19 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   void _scheduleWallpaperColorExtraction(ImageProvider provider, String url);
 
-  int _selectedTabIndex = 0;
+  final ValueNotifier<int> _selectedTabIndexNotifier = ValueNotifier<int>(0);
+  int get _selectedTabIndex => _selectedTabIndexNotifier.value;
   bool _focusTabVisited = false;
-  double _lastHomeHeaderExtent = 122.0;
-  double _lastFocusHeaderExtent = 0.0;
+  final ValueNotifier<double> _homeHeaderExtentNotifier = ValueNotifier<double>(
+    122.0,
+  );
+  final ValueNotifier<double> _focusHeaderExtentNotifier =
+      ValueNotifier<double>(0.0);
+  Widget? _cachedDrawerMenu;
+  String? _cachedDrawerUsername;
+  String? _cachedDrawerTimeSalutation;
+  int? _cachedDrawerTeamPendingCount;
+  bool? _cachedDrawerHasTeamConflictDot;
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
@@ -439,6 +463,7 @@ class _HomeDashboardState extends _HomeDashboardStateBase
         _HomeDashboardDataMixin,
         _HomeDashboardPersistenceMixin,
         _HomeDashboardWallpaperMixin,
+        _HomeDashboardViewActionsMixin,
         _HomeDashboardViewMixin {}
 
 /// 🚀 首页 Banner 事件模型

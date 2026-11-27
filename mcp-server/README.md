@@ -17,32 +17,35 @@
 - Node.js 22.13 或更高版本；
 - CountdownTodo 已至少启动一次，并完成当前数据库迁移；
 - 仅支持本地 `stdio`；MCP Server 本身不监听网络端口。AI Host 会把工具返回内容提供给其模型，仍需遵循所用 Host 和模型服务商的隐私策略。
+- macOS 上客户端是沙盒 App，数据库位于 App 容器内。MCP Host 及其拉起的 node 进程需要「完全磁盘访问权限」（系统设置 → 隐私与安全性 → 完全磁盘访问权限），否则读取数据库会报 `unable to open database file` / `EPERM`。
 
 ## 安装与检查
 
 ```bash
 cd /absolute/path/to/CountdownTodo/mcp-server
 npm install
-COUNTDOWN_TODO_DATABASE="/absolute/path/uni_sync_<username>.db" npm run check
+COUNTDOWN_TODO_DATABASE="/absolute/path/v4_uni_sync_<username>.db" npm run check
 ```
 
-数据库文件名是 `uni_sync_<当前登录用户名>.db`。常见查找方式：
+数据库文件名是 `v4_uni_sync_<当前登录用户名>.db`（测试环境为 `test_v5_uni_sync_<username>.db`）。客户端通过 `_initDB()` 添加环境前缀，因此不能省略 `v4_`。常见查找方式：
 
 ```bash
-# macOS
-find "$HOME/Library" -name 'uni_sync_*.db' 2>/dev/null
+# macOS：应用是沙盒 App，数据库在 App 容器内
+find "$HOME/Library/Containers/com.junpgle.countdowntodo" \
+     "$HOME/Library/Group Containers/group.com.junpgle.countdowntodo" \
+     -name 'v4_uni_sync_*.db' 2>/dev/null
 
 # Linux
-find "${XDG_DATA_HOME:-$HOME/.local/share}" -name 'uni_sync_*.db' 2>/dev/null
+find "${XDG_DATA_HOME:-$HOME/.local/share}" -name 'v4_uni_sync_*.db' 2>/dev/null
 ```
 
 Windows PowerShell：
 
 ```powershell
-Get-ChildItem "$env:APPDATA","$env:LOCALAPPDATA" -Filter "uni_sync_*.db" -Recurse -ErrorAction SilentlyContinue
+Get-ChildItem "$env:APPDATA","$env:LOCALAPPDATA" -Filter "v4_uni_sync_*.db" -Recurse -ErrorAction SilentlyContinue
 ```
 
-路径必须指向数据库文件本身，不要指向目录。建议先退出 CountdownTodo，执行一次 `npm run check`，确认输出 `"schemaValid": true`。
+macOS 上若多个账号的库都存在，以最近修改、体积最大的为准（旧账号或 `default` 库通常较小且不更新）。路径必须指向数据库文件本身，不要指向目录。建议先退出 CountdownTodo，执行一次 `npm run check`，确认输出 `"schemaValid": true`。
 
 ## MCP Host 配置
 
@@ -58,7 +61,7 @@ VS Code 的 `.vscode/mcp.json`：
       "command": "node",
       "args": ["/absolute/path/to/CountdownTodo/mcp-server/src/index.js"],
       "env": {
-        "COUNTDOWN_TODO_DATABASE": "/absolute/path/uni_sync_<username>.db"
+        "COUNTDOWN_TODO_DATABASE": "/absolute/path/v4_uni_sync_<username>.db"
       }
     }
   }
@@ -74,7 +77,7 @@ VS Code 的 `.vscode/mcp.json`：
       "command": "node",
       "args": ["/absolute/path/to/CountdownTodo/mcp-server/src/index.js"],
       "env": {
-        "COUNTDOWN_TODO_DATABASE": "/absolute/path/uni_sync_<username>.db"
+        "COUNTDOWN_TODO_DATABASE": "/absolute/path/v4_uni_sync_<username>.db"
       }
     }
   }

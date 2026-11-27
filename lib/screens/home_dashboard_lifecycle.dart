@@ -5,7 +5,8 @@ part of 'home_dashboard.dart';
 mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   bool _didEnterBackground = false;
   bool _dashboardTickerModeEnabled = true;
-  bool _isCompletingTodoFromNotification = false;
+  final Set<String> _completingNotificationKeys = <String>{};
+  bool _isReconcilingCompletedCountdowns = false;
   DateTime? _semesterWeekLoadedDate;
   bool _semesterWeekRefreshPending = false;
 
@@ -88,6 +89,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
     ScreenTimeService.dataRefreshNotifier.addListener(_onScreenTimeDataRefresh);
     AiRecognitionChatBridge.changes.addListener(_onAiRecognitionChatChanged);
+    LiquidGlassEffectService.configurationListenable.addListener(
+      _onLiquidGlassConfigurationChanged,
+    );
     _lanSyncCompletedSub = LanSyncService.instance.onSyncCompleted.listen((
       result,
     ) {
@@ -121,14 +125,37 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       _notifSubs.add(
         NotificationService.listen('markCurrentTodoDone', (call) {
-          // debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
           final args = call.arguments;
           int? notifId;
+          String? countdownId;
           if (args is Map) {
-            notifId = args['notificationId'] as int?;
+            notifId = JsonValueParser.toNullableInt(args['notificationId']);
+            final rawCountdownId = args['countdownId']?.toString().trim();
+            if (rawCountdownId != null && rawCountdownId.isNotEmpty) {
+              countdownId = rawCountdownId;
+            }
           }
-          // debugPrint("📱 解析 notifId: $notifId");
-          _markCurrentTodoDone(notifId: notifId);
+          _markCurrentTodoDone(notifId: notifId, countdownId: countdownId);
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('countdownReminderDismissed', (call) {
+          final args = call.arguments;
+          if (args is! Map) return;
+          final notifId = JsonValueParser.toNullableInt(args['notificationId']);
+          if (notifId != null) {
+            _activeTodoNotifIds.remove(notifId);
+          }
+          final countdownId = args['countdownId']?.toString().trim();
+          final dateStr = args['dateStr']?.toString().trim();
+          if (countdownId != null &&
+              countdownId.isNotEmpty &&
+              dateStr != null &&
+              dateStr.isNotEmpty) {
+            unawaited(
+              CountdownReminderPrefs.markDismissed(countdownId, dateStr),
+            );
+          }
         }),
       );
       _notifSubs.add(
@@ -318,7 +345,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   void _refreshSemesterWeekIfDateChanged() {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (_semesterWeekLoadedDate == today || _semesterWeekRefreshPending) return;
 
     _semesterWeekRefreshPending = true;
@@ -363,6 +390,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       _onScreenTimeDataRefresh,
     );
     AiRecognitionChatBridge.changes.removeListener(_onAiRecognitionChatChanged);
+    LiquidGlassEffectService.configurationListenable.removeListener(
+      _onLiquidGlassConfigurationChanged,
+    );
+    _preblurredWallpaperController.dispose();
     DailyAiSuggestionService.revision.removeListener(
       _onDailyAiSuggestionRevisionChanged,
     );
@@ -422,6 +453,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _pomodoroRevision.dispose();
     _habitsRevision.dispose();
     _isGlobalLoadingNotifier.dispose();
+    _selectedTabIndexNotifier.dispose();
+    _isSyncingNotifier.dispose();
+    _homeHeaderExtentNotifier.dispose();
+    _focusHeaderExtentNotifier.dispose();
     _pomodoroTickNotifier.dispose();
     _pomodoroDisplayTickNotifier.dispose();
     _githubResourceService.dispose();
@@ -610,30 +645,19 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _showClipboardChallengeDialog(ChallengeDraft draft) async {
-    final shouldImport = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final scheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          icon: Icon(Icons.auto_awesome_rounded, color: scheme.primary),
-          title: const Text('发现挑战分享'),
-          content: Text(
-            '检测到挑战「${draft.title}」的分享内容，共 ${draft.taskTitles.length} 项任务。是否导入并查看？',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('暂不导入'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('导入挑战'),
-            ),
-          ],
-        );
-      },
+    final shouldImport = await AppDialogs.confirm(
+      context,
+      icon: Icon(
+        Icons.auto_awesome_rounded,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      title: '发现挑战分享',
+      message:
+          '检测到挑战「${draft.title}」的分享内容，共 ${draft.taskTitles.length} 项任务。是否导入并查看？',
+      cancelLabel: '暂不导入',
+      confirmLabel: '导入挑战',
     );
-    if (shouldImport != true || !mounted) return;
+    if (!shouldImport || !mounted) return;
 
     final editedDraft = await Navigator.of(context).push<ChallengeDraft>(
       MaterialPageRoute(
@@ -647,24 +671,14 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   Future<void> _startImportedChallenge(ChallengeDraft draft) async {
     if (_isThirtyDayChallengeActive && mounted) {
-      final shouldReplace = await showAppDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('开启导入的挑战？'),
-          content: Text('当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('继续当前挑战'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('开启新挑战'),
-            ),
-          ],
-        ),
+      final shouldReplace = await AppDialogs.confirm(
+        context,
+        title: '开启导入的挑战？',
+        message: '当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。',
+        cancelLabel: '继续当前挑战',
+        confirmLabel: '开启新挑战',
       );
-      if (shouldReplace != true || !mounted) return;
+      if (!shouldReplace || !mounted) return;
     }
 
     try {
@@ -691,29 +705,17 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     String inviteCode, {
     String? teamName,
   }) async {
-    final shouldJoin = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.groups_rounded),
-        title: const Text('发现团队邀请'),
-        content: Text(
-          teamName == null
-              ? '检测到一个团队邀请码，是否申请加入？'
-              : '检测到来自「$teamName」的团队邀请，是否申请加入？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('暂不加入'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('加入团队'),
-          ),
-        ],
-      ),
+    final shouldJoin = await AppDialogs.confirm(
+      context,
+      icon: const Icon(Icons.groups_rounded),
+      title: '发现团队邀请',
+      message: teamName == null
+          ? '检测到一个团队邀请码，是否申请加入？'
+          : '检测到来自「$teamName」的团队邀请，是否申请加入？',
+      cancelLabel: '暂不加入',
+      confirmLabel: '加入团队',
     );
-    if (shouldJoin != true || !mounted) return;
+    if (!shouldJoin || !mounted) return;
 
     final result = await ApiService.requestJoinTeam(inviteCode);
     if (!mounted) return;
@@ -747,7 +749,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         _semesterEnd = end;
         _currentSemesterWeek = currentSemesterWeek;
       });
-      _semesterWeekLoadedDate = DateTime(now.year, now.month, now.day);
+      _semesterWeekLoadedDate = CalendarDateMath.dateOnly(now);
     }
   }
 
@@ -850,6 +852,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         }
         unawaited(_checkClipboardShareAfterResume());
         unawaited(_syncDailyAiSuggestion());
+        unawaited(_reconcilePendingCompletedCountdowns());
         NotificationService.cancelSpecialTodoNotification(12351);
         NotificationService.cancelTodoRecognizeNotification();
       }
@@ -1015,15 +1018,224 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     }
   }
 
-  Future<void> _markCurrentTodoDone({int? notifId}) async {
+  void _onLiquidGlassConfigurationChanged() {
+    if (!mounted) return;
+    final config = LiquidGlassEffectService.configuration;
+    _preblurredWallpaperController.updateBlurSigma(
+      config.blurSigma,
+      active: _lastPreblurredShowWallpaper && config.enabled,
+    );
+  }
+
+  @override
+  Future<void> _reconcilePendingCompletedCountdowns() async {
+    if (_isReconcilingCompletedCountdowns || !mounted) return;
+    _isReconcilingCompletedCountdowns = true;
+    try {
+      final pendingIds =
+          await NotificationService.getPendingCompletedCountdowns();
+      if (pendingIds.isEmpty || !mounted) return;
+
+      final allCountdowns = await StorageService.getCountdowns(
+        widget.username,
+        includeDeleted: true,
+      );
+      if (!mounted) return;
+
+      final byId = <String, CountdownItem>{
+        for (final item in allCountdowns) item.id: item,
+      };
+      final changed = <CountdownItem>[];
+      final acknowledged = <String>[];
+
+      for (final rawId in pendingIds) {
+        final id = rawId.trim();
+        if (id.isEmpty) continue;
+        final item = byId[id];
+        if (item == null) continue;
+        if (!item.isDeleted && !item.isCompleted) {
+          item.isCompleted = true;
+          item.markAsChanged();
+          changed.add(item);
+        }
+        acknowledged.add(id);
+      }
+
+      if (changed.isNotEmpty) {
+        await StorageService.saveCountdowns(
+          widget.username,
+          changed,
+          sync: true,
+        );
+        if (mounted) {
+          final updatedById = {for (final item in changed) item.id: item};
+          setState(() {
+            for (var i = 0; i < _countdowns.length; i++) {
+              final replacement = updatedById[_countdowns[i].id];
+              if (replacement != null) {
+                _countdowns[i] = replacement;
+              }
+            }
+            _countdownsDataRevision++;
+          });
+          _countdownsNotifier.value = List<CountdownItem>.from(_countdowns);
+          _timelineRevision.value++;
+        }
+        unawaited(_rescheduleAlarms());
+        await WidgetService.updateTodoWidget(_todos);
+      }
+
+      if (acknowledged.isNotEmpty) {
+        await NotificationService.acknowledgeCompletedCountdowns(acknowledged);
+      }
+    } catch (_) {
+      // Pending countdown completion reconciliation is best-effort.
+    } finally {
+      _isReconcilingCompletedCountdowns = false;
+    }
+  }
+
+  Future<bool> _completeCountdownFromNotification({
+    int? notifId,
+    String? countdownId,
+  }) async {
+    final now = DateTime.now();
+    List<Map<String, dynamic>>? scheduledReminders;
+    if (countdownId == null &&
+        CountdownReminderHelper.isScheduledAlarmId(notifId)) {
+      scheduledReminders = await NotificationService.getScheduledReminders();
+    }
+
+    CountdownItem? findIn(
+      List<CountdownItem> items, {
+      required bool includeCompleted,
+    }) => CountdownReminderHelper.findCountdownToComplete(
+      countdowns: items,
+      countdownId: countdownId,
+      notifId: notifId,
+      scheduledReminders: scheduledReminders ?? const <Map<String, dynamic>>[],
+      now: now,
+      includeCompleted: includeCompleted,
+    );
+
+    var target = findIn(_countdowns, includeCompleted: false);
+    if (target == null) {
+      final stored = await StorageService.getCountdowns(widget.username);
+      if (!mounted) return false;
+      target =
+          findIn(stored, includeCompleted: false) ??
+          findIn(_countdowns, includeCompleted: true) ??
+          findIn(stored, includeCompleted: true);
+    }
+
+    if (target == null) {
+      if (countdownId != null) {
+        final liveNotifId = CountdownReminderHelper.liveNotificationId(
+          countdownId,
+        );
+        _activeTodoNotifIds.remove(liveNotifId);
+        if (notifId != null) _activeTodoNotifIds.remove(notifId);
+        await NotificationService.cancelSpecialTodoNotification(liveNotifId);
+        if (notifId != null && notifId != liveNotifId) {
+          await NotificationService.cancelSpecialTodoNotification(notifId);
+        }
+        return true;
+      }
+      return false;
+    }
+
+    final completedItem = target;
+    final wasAlreadyCompleted = completedItem.isCompleted;
+    final dateStr = AppTimeFormats.date(completedItem.targetDate.toLocal());
+    final liveNotifId = CountdownReminderHelper.liveNotificationId(
+      completedItem.id,
+    );
+
+    if (!wasAlreadyCompleted) {
+      completedItem.isCompleted = true;
+      completedItem.markAsChanged();
+      if (mounted) {
+        setState(() {
+          final existingIndex = _countdowns.indexWhere(
+            (c) => c.id == completedItem.id,
+          );
+          if (existingIndex != -1) {
+            _countdowns[existingIndex] = completedItem;
+          } else {
+            _countdowns.add(completedItem);
+          }
+          _countdownsDataRevision++;
+        });
+        _countdownsNotifier.value = List<CountdownItem>.from(_countdowns);
+        _timelineRevision.value++;
+      }
+      await StorageService.saveCountdowns(widget.username, [
+        completedItem,
+      ], sync: true);
+    }
+
+    _activeTodoNotifIds.remove(liveNotifId);
+    if (notifId != null) _activeTodoNotifIds.remove(notifId);
+
+    await NotificationService.markCountdownDismissed(
+      countdownId: completedItem.id,
+      dateStr: dateStr,
+      notifId: liveNotifId,
+    );
+    if (notifId != null && notifId != liveNotifId) {
+      await NotificationService.cancelSpecialTodoNotification(notifId);
+    }
+    scheduledReminders ??= await NotificationService.getScheduledReminders();
+    for (final scheduledId
+        in CountdownReminderHelper.scheduledNotifIdsForCountdown(
+          completedItem.id,
+          scheduledReminders,
+        )) {
+      await NotificationService.cancelReminder(scheduledId);
+    }
+    await NotificationService.acknowledgeCompletedCountdowns([
+      completedItem.id,
+    ]);
+
+    if (!wasAlreadyCompleted && mounted) {
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      unawaited(_rescheduleAlarms());
+      await WidgetService.updateTodoWidget(_todos);
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('已完成: ${completedItem.title}'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    }
+    return true;
+  }
+
+  Future<void> _markCurrentTodoDone({int? notifId, String? countdownId}) async {
     // debugPrint(
-    //     "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
-    if (!mounted || _isCompletingTodoFromNotification) return;
-    _isCompletingTodoFromNotification = true;
+    //     "📱 _markCurrentTodoDone 被调用: notifId=$notifId, countdownId=$countdownId, todos数量=${_todos.length}");
+    if (!mounted) return;
+    final completionKey = countdownId != null && countdownId.isNotEmpty
+        ? 'countdown:$countdownId'
+        : 'notif:${notifId ?? 'default'}';
+    if (!_completingNotificationKeys.add(completionKey)) return;
 
     try {
+      if (countdownId != null ||
+          CountdownReminderHelper.isCountdownNotificationId(notifId)) {
+        final handled = await _completeCountdownFromNotification(
+          notifId: notifId,
+          countdownId: countdownId,
+        );
+        if (handled || countdownId != null) return;
+      }
+
       DateTime now = DateTime.now();
-      DateTime today = DateTime(now.year, now.month, now.day);
+      DateTime today = CalendarDateMath.dateOnly(now);
 
       List<TodoItem> activeTodos = _todos.where((t) {
         if (t.dueDate == null) return true;
@@ -1120,7 +1332,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         );
       }
     } finally {
-      _isCompletingTodoFromNotification = false;
+      _completingNotificationKeys.remove(completionKey);
     }
   }
 }

@@ -592,8 +592,7 @@ String _scheduleDateAndTime(FixedScheduleItem? item) {
 }
 
 String _formatTimeRange(DateTime start, DateTime end) {
-  final endPattern =
-      start.year == end.year && start.month == end.month && start.day == end.day
+  final endPattern = AppTimeFormats.isSameDay(start, end)
       ? 'HH:mm'
       : 'yyyy年M月d日 HH:mm';
   return '${AppTimeFormats.format(start, 'yyyy年M月d日 HH:mm')} – ${AppTimeFormats.format(end, endPattern)}';

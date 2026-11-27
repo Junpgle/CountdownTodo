@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/text_file_reader.dart';
+import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_bill_import_parser.dart';
@@ -450,7 +451,12 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isParsing
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                showHeroCard: true,
+                itemCount: 5,
+                itemHeight: 74,
+              )
             : result == null
             ? _buildEmptyState(context, topBarHeight)
             : _buildPreviewBody(context, topBarHeight, result),
@@ -836,8 +842,9 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
   ) {
     final colors = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final occurredText = DateFormat('yyyy-MM-dd HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(item.occurredAt));
+    final occurredText = AppTimeFormats.fullDateTime(
+      DateTime.fromMillisecondsSinceEpoch(item.occurredAt),
+    );
     final amountColor = switch (item.type) {
       FinanceTransactionType.expense => colors.error,
       FinanceTransactionType.income => colors.primary,

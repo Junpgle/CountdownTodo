@@ -48,16 +48,6 @@ bool _didDashboardPomodoroDisplayChange(
   return previousDisplaySeconds != nextDisplaySeconds;
 }
 
-final Map<(String?, String), DateFormat> _dashboardDateFormats = {};
-
-DateFormat _dashboardDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _dashboardDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   bool _hasCheckedCourseNotification = false;
   List<TodoItem>? _dashboardTodoCandidateSource;
@@ -255,7 +245,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     List<CourseItem> courses,
     DateTime now,
   ) {
-    final nextDay = DateTime(now.year, now.month, now.day + 1);
+    final nextDay = AppTimeFormats.localDayStartOffset(now, 1);
     if (title != '今日课程') return nextDay;
 
     DateTime? lastCourseEnd;
@@ -354,9 +344,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       statusIcon = Icons.error_outline;
       iconColor = Colors.red;
       title = 'AI识别失败';
-      subtitle = errorMsg != null && errorMsg.length > 30
-          ? '${errorMsg.substring(0, 30)}...'
-          : (errorMsg ?? '点击查看 AI 输出，可选择重试');
+      subtitle = errorMsg == null
+          ? '点击查看 AI 输出，可选择重试'
+          : AppTextUtils.truncate(errorMsg, 30, ellipsis: '...');
     } else {
       statusIcon = Icons.check_circle_outline;
       iconColor = Colors.green;
@@ -1196,7 +1186,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
 
     if (todo.isOverdueAt(now)) return '待处理';
     if (todo.isDateOnly) return '今日';
-    return _dashboardDateFormat('HH:mm').format(dueDate);
+    return AppTimeFormats.dateFormatter('HH:mm').format(dueDate);
   }
 
   // === 业务与辅助逻辑 ===
@@ -1212,7 +1202,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     if (dateText.isNotEmpty) {
       // Prefer strict date parsing, then allow DateTime-compatible fallback.
       try {
-        day = _dashboardDateFormat('yyyy-MM-dd').parseStrict(dateText);
+        day = AppTimeFormats.dateFormatter('yyyy-MM-dd').parseStrict(dateText);
       } catch (_) {
         day = DateTime.tryParse(dateText);
       }
@@ -1443,10 +1433,18 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     // 3.5 倒数日当天 08:00 起实时活动通知
     final countdownTriggerStart = DateTime(now.year, now.month, now.day, 8, 0);
     if (!now.isBefore(countdownTriggerStart)) {
+      final dismissedCountdownKeys =
+          await CountdownReminderPrefs.getDismissedKeys();
       for (final countdown in _countdowns) {
         if (countdown.isDeleted || countdown.isCompleted) continue;
         final targetLocal = countdown.targetDate.toLocal();
         if (!AppTimeFormats.isSameDay(targetLocal, now)) continue;
+        final dateStr = AppTimeFormats.date(targetLocal);
+        if (dismissedCountdownKeys.contains(
+          CountdownReminderHelper.dismissedStorageKey(countdown.id, dateStr),
+        )) {
+          continue;
+        }
         final notifId = NotificationService.countdownLiveNotifId(countdown.id);
         final desktopEventKey =
             'countdown:${countdown.id}:${now.year}-${now.month}-${now.day}';

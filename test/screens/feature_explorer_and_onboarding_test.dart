@@ -363,13 +363,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('倒数日语义识别、到达提醒与实时活动'), findsOneWidget);
 
-      // Search for '人均专注'
+      // Search for '全站日均'
       await tester.enterText(
         find.byKey(const ValueKey<String>('feature-explorer-search-field')),
-        '人均专注',
+        '全站日均',
       );
       await tester.pumpAndSettle();
       expect(find.text('番茄钟与跨端实时专注'), findsOneWidget);
+      expect(find.text('专注统计看板与多维视图下钻'), findsOneWidget);
 
       // Search for '戒掉饮料'
       await tester.enterText(

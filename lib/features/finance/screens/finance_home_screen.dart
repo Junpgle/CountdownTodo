@@ -9,14 +9,16 @@ import '../../../services/storage/app_settings_storage.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../services/ai_usage_cost_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
+import '../../../widgets/optional_liquid_glass_backdrop.dart';
 import '../../../utils/page_transitions.dart';
 import '../widgets/finance_widgets.dart';
 import '../widgets/finance_intro_guide.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
@@ -28,6 +30,8 @@ import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
 import 'finance_transaction_detail_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/calendar_date_math.dart';
+import '../../../utils/time_utils.dart';
 
 typedef _FinanceHomeData = ({
   List<FinanceTransaction> transactions,
@@ -89,7 +93,8 @@ class FinanceHomeScreen extends StatefulWidget {
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
 }
 
-class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
+class _FinanceHomeScreenState extends State<FinanceHomeScreen>
+    with FinanceRevisionRefreshMixin<FinanceHomeScreen> {
   late DateTime _month;
   List<FinanceTransaction> _transactions = const [];
   List<FinanceTransaction> _overviewTransactions = const [];
@@ -121,7 +126,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   String? _lastRecurringRuleSignature;
   Timer? _upcomingTransactionTimer;
   Timer? _autoGenerationTimer;
-  Timer? _financeChangeRefreshTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
   final GlobalKey _budgetActionKey = GlobalKey();
@@ -227,7 +231,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   void initState() {
     super.initState();
     _quickEntryInProgress = widget.openQuickEntry;
-    FinanceStorage.revision.addListener(_onFinanceStorageChanged);
+    startListeningToFinanceRevision();
     _ledgerDateRange = widget.initialLedgerDateRange;
     _isLedgerQueryLoading = widget._isMonthLedgerRoute;
     final initialMonth = widget.initialMonth ?? widget.clock();
@@ -280,18 +284,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   void dispose() {
     _upcomingTransactionTimer?.cancel();
     _autoGenerationTimer?.cancel();
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceStorageChanged);
     super.dispose();
   }
 
-  void _onFinanceStorageChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_load(showLoading: false));
-    });
-  }
+  @override
+  void onFinanceRevisionRefresh() => unawaited(_load(showLoading: false));
 
   Future<void> _load({
     DateTime? targetMonth,
@@ -484,9 +481,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final effectiveMonth = targetMonth ?? _month;
     final from = DateTime(effectiveMonth.year, effectiveMonth.month);
     final to = DateTime(effectiveMonth.year, effectiveMonth.month + 1);
-    // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
-    final overviewFrom = financeCalendarDayOffset(from, -7);
-    final overviewTo = financeCalendarDayOffset(to, 7);
+    // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断；
+    // 年视图需要整个自然年的账单，因此概览窗口取两者并集。
+    final yearStart = DateTime(effectiveMonth.year);
+    final nextYearStart = DateTime(effectiveMonth.year + 1);
+    final weekWindowFrom = financeCalendarDayOffset(from, -7);
+    final weekWindowTo = financeCalendarDayOffset(to, 7);
+    final overviewFrom = weekWindowFrom.isBefore(yearStart)
+        ? weekWindowFrom
+        : yearStart;
+    final overviewTo = weekWindowTo.isAfter(nextYearStart)
+        ? weekWindowTo
+        : nextYearStart;
     final now = widget.clock();
     final balanceEventsThroughAt = overviewTo.isAfter(now)
         ? overviewTo.millisecondsSinceEpoch - 1
@@ -552,10 +558,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         ? monthStart.millisecondsSinceEpoch
         : DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch;
     if (_month.year == currentDate.year && _month.month == currentDate.month) {
-      final nextDayStartAt = DateTime(
-        currentDate.year,
-        currentDate.month,
-        currentDate.day + 1,
+      final nextDayStartAt = AppTimeFormats.localDayStartOffset(
+        currentDate,
+        1,
       ).millisecondsSinceEpoch;
       if (nextDayStartAt < nextEventAt) nextEventAt = nextDayStartAt;
     }
@@ -842,8 +847,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         hasPaymentMethod
             ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
             : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
-      FinanceTransactionType.transfer =>
-        '删除后，转出账户与转入账户的余额将恢复。确认继续吗？',
+      FinanceTransactionType.transfer => '删除后，转出账户与转入账户的余额将恢复。确认继续吗？',
     };
   }
 
@@ -1187,7 +1191,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         : requestedMonth;
     final start = DateTime(month.year, month.month);
     final end = month.year == now.year && month.month == now.month
-        ? DateTime(now.year, now.month, now.day)
+        ? CalendarDateMath.dateOnly(now)
         : DateTime(month.year, month.month + 1, 0);
     final colorScheme = Theme.of(context).colorScheme;
     await PageTransitions.pushFromRect<void>(
@@ -1271,7 +1275,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           ? '清除附加筛选'
                           : '返回全部账单'
                     : _isCategoryLedgerRoute
-                    ? '返回支出分类'
+                    ? (_categoryMap[widget.initialCategoryFilterUuid]?.type ==
+                              FinanceCategoryType.income
+                          ? '返回收入分类'
+                          : '返回支出分类')
                     : widget._isMonthLedgerRoute
                     ? '返回结余趋势'
                     : '返回概览',
@@ -1280,118 +1287,138 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               )
             : null,
         actions: [
-          IconButton(
-            key: _budgetActionKey,
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '预算',
-            onPressed: _openBudgets,
-            icon: const Icon(Icons.track_changes_outlined),
-          ),
-          PopupMenuButton<String>(
-            key: _moreActionKey,
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '更多操作',
-            onSelected: (value) {
-              if (value == 'guide') _showIntroGuide(force: true);
-              if (value == 'settings') _openSettings();
-              if (value == 'text') _openTextRecognition();
-              if (value == 'automation') _openAutomation();
-              if (value == 'loans') _openLoans();
-              if (value == 'future_commitments') _openFutureCommitments();
-              if (value == 'ai_cost') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiUsageCostScreen()),
-                );
-              }
-              if (value == 'export') _exportCsv();
-              if (value == 'trash') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const FinanceTrashScreen()),
-                );
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'text',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.text_snippet_outlined),
-                  title: Text('文本识别记账'),
-                ),
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                key: _budgetActionKey,
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '预算',
+                onPressed: _openBudgets,
+                icon: const Icon(Icons.track_changes_outlined),
               ),
-              PopupMenuItem(
-                value: 'export',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.file_download_outlined),
-                  title: Text('导出$_selectedMonthLabel账单 CSV'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'automation',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.autorenew_outlined),
-                  title: Text('自动化与快捷模板'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'loans',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.account_balance_outlined),
-                  title: Text('贷款'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'future_commitments',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.event_repeat_outlined),
-                  title: Text('未来收支'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'ai_cost',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.auto_awesome_outlined),
-                  title: Text('AI 调用费用'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'settings',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.settings_outlined),
-                  title: Text('记账设置'),
-                ),
-              ),
-              if (!_isLedgerDrilldownRoute)
-                const PopupMenuItem(
-                  value: 'guide',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.help_outline_rounded),
-                    title: Text('记账新手指引'),
+              PopupMenuButton<String>(
+                key: _moreActionKey,
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '更多操作',
+                onSelected: (value) {
+                  if (value == 'guide') _showIntroGuide(force: true);
+                  if (value == 'settings') _openSettings();
+                  if (value == 'text') _openTextRecognition();
+                  if (value == 'automation') _openAutomation();
+                  if (value == 'loans') _openLoans();
+                  if (value == 'future_commitments') _openFutureCommitments();
+                  if (value == 'ai_cost') {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const AiUsageCostScreen(),
+                      ),
+                    );
+                  }
+                  if (value == 'export') _exportCsv();
+                  if (value == 'trash') {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FinanceTrashScreen(),
+                      ),
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'text',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.text_snippet_outlined),
+                      title: Text('文本识别记账'),
+                    ),
                   ),
-                ),
-              const PopupMenuItem(
-                value: 'trash',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline),
-                  title: Text('记账回收站'),
-                ),
+                  PopupMenuItem(
+                    value: 'export',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.file_download_outlined),
+                      title: Text('导出$_selectedMonthLabel账单 CSV'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'automation',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.autorenew_outlined),
+                      title: Text('自动化与快捷模板'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'loans',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.account_balance_outlined),
+                      title: Text('贷款'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'future_commitments',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.event_repeat_outlined),
+                      title: Text('未来收支'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'ai_cost',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.auto_awesome_outlined),
+                      title: Text('AI 调用费用'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'settings',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.settings_outlined),
+                      title: Text('记账设置'),
+                    ),
+                  ),
+                  if (!_isLedgerDrilldownRoute)
+                    const PopupMenuItem(
+                      value: 'guide',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.help_outline_rounded),
+                        title: Text('记账新手指引'),
+                      ),
+                    ),
+                  const PopupMenuItem(
+                    value: 'trash',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('记账回收站'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: !_hasInitialized && _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonDashboardPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 1040,
+                showPeriodHeader: true,
+                showMetricGrid: true,
+                showChart: true,
+                listCount: 4,
+                wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+                wideBreakpoint: 640,
+                wideListColumns: 2,
+              )
             : !_hasInitialized && _loadError != null
             ? _buildError(colorScheme)
             : Align(
@@ -1581,14 +1608,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         },
       ),
     );
-    final guardedScaffold = PopScope<Object?>(
-      canPop: !_handleLedgerBack,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _handleLedgerBack) {
-          _handleBack();
-        }
-      },
-      child: scaffold,
+    final guardedScaffold = OptionalLiquidGlassBackdropScope(
+      isSolidBackground: true,
+      child: PopScope<Object?>(
+        canPop: !_handleLedgerBack,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && _handleLedgerBack) {
+            _handleBack();
+          }
+        },
+        child: scaffold,
+      ),
     );
 
     final isDesktop =
@@ -1705,7 +1735,7 @@ class _FinanceOpeningBalanceDialogState
 
   Future<void> _pickStartDate() async {
     final now = widget.clock();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final initialDate = _startDate.isAfter(today) ? today : _startDate;
     final picked = await showAppDatePicker(
       context: context,
@@ -1719,7 +1749,7 @@ class _FinanceOpeningBalanceDialogState
     );
     if (picked == null || !mounted) return;
     setState(() {
-      _startDate = DateTime(picked.year, picked.month, picked.day);
+      _startDate = CalendarDateMath.dateOnly(picked);
       _dateError = null;
     });
   }
@@ -1767,7 +1797,7 @@ class _FinanceOpeningBalanceDialogState
                 decimal: true,
               ),
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                FilteringTextInputFormatter.allow(_rxCached3_1),
               ],
               decoration: InputDecoration(
                 labelText: '期初结余',
@@ -1820,3 +1850,6 @@ class _FinanceOpeningBalanceDialogState
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached3_1 = RegExp(r'[0-9.,]');

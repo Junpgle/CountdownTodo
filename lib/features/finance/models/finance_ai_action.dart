@@ -290,10 +290,10 @@ class FinanceAiAction {
     if (text == null || text.isEmpty) return null;
     final normalized = text
         .replaceAll(',', '')
-        .replaceAll(RegExp(r'^[¥￥$€£]'), '')
-        .replaceAll(RegExp(r'\s*(?:元|块|CNY)\s*$', caseSensitive: false), '')
-        .replaceFirst(RegExp(r'^[-+]'), '');
-    final match = RegExp(r'^(\d*)(?:\.(\d*))?$').firstMatch(normalized);
+        .replaceAll(_rxCached2_1, '')
+        .replaceAll(_rxCached2_2, '')
+        .replaceFirst(_rxCached2_3, '');
+    final match = _rxCached2_4.firstMatch(normalized);
     if (match == null) return null;
     final wholeText = match.group(1) ?? '';
     final fraction = match.group(2) ?? '';
@@ -321,3 +321,9 @@ class FinanceAiAction {
     return value == null ? null : _string(value);
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached2_1 = RegExp(r'^[¥￥$€£]');
+final RegExp _rxCached2_2 = RegExp(r'\s*(?:元|块|CNY)\s*$', caseSensitive: false);
+final RegExp _rxCached2_3 = RegExp(r'^[-+]');
+final RegExp _rxCached2_4 = RegExp(r'^(\d*)(?:\.(\d*))?$');

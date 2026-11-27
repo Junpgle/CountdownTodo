@@ -234,7 +234,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val imagePath: String?,
         val originalText: String?,
         val timerAnchorMs: Long?,
-        val timerCountsDown: Boolean
+        val timerCountsDown: Boolean,
+        val countdownId: String? = null,
+        val countdownDateStr: String? = null
     )
 
     /**
@@ -290,8 +292,62 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "com.math_quiz.MARK_DONE") {
                 val notifId = intent.getIntExtra("notificationId", -1)
-                val args = if (notifId != -1) mapOf("notificationId" to notifId) else null
-                methodChannel?.invokeMethod("markCurrentTodoDone", args)
+                val countdownId = intent.getStringExtra("countdownId")
+                if (notifId in 70001..71999) {
+                    lastNotificationFingerprint.remove(notifId)
+                }
+                val args = mutableMapOf<String, Any>()
+                if (notifId != -1) args["notificationId"] = notifId
+                if (!countdownId.isNullOrBlank()) args["countdownId"] = countdownId
+                methodChannel?.invokeMethod("markCurrentTodoDone", args.ifEmpty { null })
+            }
+        }
+    }
+
+    // 接收来自 CountdownReminderReceiver 的完成/手动划掉事件，同步通知 Dart 与清理缓存指纹
+    private val countdownReminderEventReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                CountdownReminderReceiver.INTERNAL_ACTION_COMPLETED -> {
+                    val notifId = intent.getIntExtra(
+                        CountdownReminderReceiver.EXTRA_NOTIFICATION_ID,
+                        -1
+                    )
+                    val notifIds = intent.getIntArrayExtra(
+                        CountdownReminderReceiver.EXTRA_NOTIFICATION_IDS
+                    )
+                    val countdownId = intent.getStringExtra(
+                        CountdownReminderReceiver.EXTRA_COUNTDOWN_ID
+                    )
+                    if (notifId != -1) lastNotificationFingerprint.remove(notifId)
+                    notifIds?.forEach { lastNotificationFingerprint.remove(it) }
+                    val args = mutableMapOf<String, Any>()
+                    if (notifId != -1) args["notificationId"] = notifId
+                    if (!countdownId.isNullOrBlank()) args["countdownId"] = countdownId
+                    methodChannel?.invokeMethod("markCurrentTodoDone", args.ifEmpty { null })
+                }
+
+                CountdownReminderReceiver.INTERNAL_ACTION_DISMISSED -> {
+                    val notifId = intent.getIntExtra(
+                        CountdownReminderReceiver.EXTRA_NOTIFICATION_ID,
+                        -1
+                    )
+                    val countdownId = intent.getStringExtra(
+                        CountdownReminderReceiver.EXTRA_COUNTDOWN_ID
+                    )
+                    val dateStr = intent.getStringExtra(
+                        CountdownReminderReceiver.EXTRA_DATE_STR
+                    )
+                    if (notifId != -1) lastNotificationFingerprint.remove(notifId)
+                    val args = mutableMapOf<String, Any>()
+                    if (notifId != -1) args["notificationId"] = notifId
+                    if (!countdownId.isNullOrBlank()) args["countdownId"] = countdownId
+                    if (!dateStr.isNullOrBlank()) args["dateStr"] = dateStr
+                    methodChannel?.invokeMethod(
+                        "countdownReminderDismissed",
+                        args.ifEmpty { null }
+                    )
+                }
             }
         }
     }
@@ -392,6 +448,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             registerReceiver(todoActionReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             registerReceiver(todoActionReceiver, filter)
+        }
+
+        val countdownEventFilter = IntentFilter().apply {
+            addAction(CountdownReminderReceiver.INTERNAL_ACTION_COMPLETED)
+            addAction(CountdownReminderReceiver.INTERNAL_ACTION_DISMISSED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                countdownReminderEventReceiver,
+                countdownEventFilter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(countdownReminderEventReceiver, countdownEventFilter)
         }
 
         // 注册番茄钟按钮接收器
@@ -969,6 +1039,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 注销广播接收器并清空 channel，防内存泄漏
         unregisterReceiver(todoActionReceiver)
+        unregisterReceiver(countdownReminderEventReceiver)
         unregisterReceiver(pomodoroActionReceiver)
         notificationExecutor.shutdownNow()
         lastNotificationFingerprint.clear()
@@ -1686,7 +1757,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             "course" -> updateCourseNotification(args)
                             "upcoming_todo" -> updateUpcomingTodoNotification(args)
                             "special_todo" -> updateSpecialTodoNotification(args)
-                            "countdown" -> updateCountdownNotification(args)
+                            "countdown" -> {
+                                result.success(updateCountdownNotification(args))
+                                return@setMethodCallHandler
+                            }
                             "pomodoro" -> updatePomodoroNotification(args)
                             "pomodoro_end" -> sendPomodoroEndAlert(args)
                             "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
@@ -1725,6 +1799,58 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         lastNotificationFingerprint.remove(notifId)
                     }
                     result.success(null)
+                }
+
+                "getPendingCompletedCountdowns" -> {
+                    result.success(
+                        CountdownReminderStore.getPendingCompletedIds(this@MainActivity)
+                    )
+                }
+
+                "acknowledgeCompletedCountdowns" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val ids = (args?.get("ids") as? List<*>)
+                        ?.mapNotNull { it?.toString() }
+                        ?: emptyList()
+                    CountdownReminderStore.acknowledgeCompletedIds(this@MainActivity, ids)
+                    result.success(true)
+                }
+
+                "markCountdownDismissed" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val countdownId = args?.get("countdownId")?.toString()
+                    val notifId = (args?.get("notificationId") as? Number)?.toInt() ?: -1
+                    val dateStr = CountdownReminderStore.normalizeDateStr(
+                        args?.get("dateStr")?.toString()
+                    )
+                    CountdownReminderStore.markDismissed(
+                        context = this@MainActivity,
+                        countdownId = countdownId,
+                        notifId = notifId,
+                        dateStr = dateStr
+                    )
+                    if (notifId != -1) {
+                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        nm.cancel(notifId)
+                        lastNotificationFingerprint.remove(notifId)
+                    }
+                    result.success(true)
+                }
+
+                "clearCountdownReminderState" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val countdownId = args?.get("countdownId")?.toString().orEmpty()
+                    val notifId = (args?.get("notificationId") as? Number)?.toInt()
+                    if (countdownId.isNotBlank()) {
+                        CountdownReminderStore.clearStateForCountdown(
+                            this@MainActivity,
+                            countdownId
+                        )
+                    }
+                    if (notifId != null) {
+                        lastNotificationFingerprint.remove(notifId)
+                    }
+                    result.success(true)
                 }
 
                 "saveImageToGallery" -> {
@@ -1875,8 +2001,29 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                                 // Keep an existing course notification only
                                 // when that same reminder is still registered.
                                 if (!incomingIds.contains(notifId)) {
+                                    if (obj.optString("type") == "countdown") {
+                                        val countdownId = obj.optString("countdownId", "")
+                                            .takeIf { it.isNotBlank() }
+                                        val dateStr = CountdownReminderStore.normalizeDateStr(
+                                            obj.optString("countdownDateStr", "")
+                                                .takeIf { it.isNotBlank() },
+                                            obj.optLong("triggerAtMs", 0L)
+                                        )
+                                        val wasActive = CountdownReminderStore.isNotificationActive(
+                                            this@MainActivity,
+                                            notifId
+                                        )
+                                        CountdownReminderStore.onScheduledCountdownAlarmRemoved(
+                                            context = this@MainActivity,
+                                            countdownId = countdownId,
+                                            notifId = notifId,
+                                            dateStr = dateStr,
+                                            wasActiveInShade = wasActive
+                                        )
+                                    }
                                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                                     nm.cancel(notifId)
+                                    lastNotificationFingerprint.remove(notifId)
                                 }
                             }
                         }
@@ -2610,47 +2757,65 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
-    private fun updateCountdownNotification(args: Map<String, Any>) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    private fun updateCountdownNotification(args: Map<String, Any>): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val countdownTitle = args["countdownTitle"] as? String ?: "倒数日"
         val category = args["countdownCategory"] as? String ?: "default"
-        val dateStr = args["countdownDateStr"] as? String ?: ""
+        val countdownId = (args["countdownId"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        val dateStr = CountdownReminderStore.normalizeDateStr(args["countdownDateStr"] as? String)
         val customNotifId = (args["notificationId"] as? Number)?.toInt()
         val notifId = customNotifId ?: NOTIFICATION_ID
 
-        val (iconResId, color, label) = when (category) {
-            "birthday" -> Triple(R.drawable.ic_countdown_birthday, 0xFFFF9800.toInt(), "🎂 生日")
-            "anniversary" -> Triple(R.drawable.ic_countdown_anniversary, 0xFFE91E63.toInt(), "💖 纪念日")
-            "exam" -> Triple(R.drawable.ic_countdown_exam, 0xFF3F51B5.toInt(), "📝 考试")
-            "holiday" -> Triple(R.drawable.ic_countdown_holiday, 0xFF00ACC1.toInt(), "🌴 假期")
-            "travel" -> Triple(R.drawable.ic_countdown_travel, 0xFF2196F3.toInt(), "✈️ 出行")
-            "deadline" -> Triple(R.drawable.ic_countdown_deadline, 0xFFF44336.toInt(), "🚩 重要节点")
-            else -> Triple(R.drawable.hourglass, 0xFFFF7043.toInt(), "⏳ 倒数日")
+        if (CountdownReminderStore.shouldSuppressAndReconcile(
+                context = this,
+                countdownId = countdownId,
+                notifId = notifId,
+                dateStr = dateStr
+            )
+        ) {
+            return false
         }
 
+        val style = CountdownReminderStore.resolveCategoryStyle(category, compactLabel = false)
         val text = if (dateStr.isNotEmpty()) "就在今天 · $dateStr" else "就在今天"
         buildAndNotify(
             title = countdownTitle,
             text = text,
-            subText = label,
+            subText = style.label,
             progress = 0,
             isOngoing = true,
-            color = color,
+            color = style.color,
             currentStep = 0,
             totalSteps = 0,
             isTodo = true,
             shortText = "就在今天",
-            iconResId = iconResId,
-            largeIconResId = iconResId,
-            notificationId = notifId
+            iconResId = style.iconResId,
+            largeIconResId = style.iconResId,
+            notificationId = notifId,
+            countdownId = countdownId,
+            countdownDateStr = dateStr,
+            isCountdown = true
+        )
+        CountdownReminderStore.markShown(
+            context = this,
+            countdownId = countdownId,
+            notifId = notifId,
+            dateStr = dateStr
+        )
+        CountdownReminderStore.cancelStaleAlarmNotifIds(
+            context = this,
+            countdownId = countdownId,
+            liveNotifId = notifId,
+            dateStr = dateStr
         )
         sendAlertIfNew(
             alertKey = "countdown_${notifId}_${dateStr}",
-            title = "$label · $countdownTitle",
+            title = "${style.label} · $countdownTitle",
             text = text,
             alertNotificationId = ALERT_TODO_ID,
-            iconResId = iconResId
+            iconResId = style.iconResId
         )
+        return true
     }
 
     // 🚀 特殊待办实时通知（快递、外卖、餐饮单独显示）
@@ -3044,7 +3209,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         imagePath: String? = null,
         originalText: String? = null,
         timerAnchorMs: Long? = null,
-        timerCountsDown: Boolean = false
+        timerCountsDown: Boolean = false,
+        countdownId: String? = null,
+        countdownDateStr: String? = null,
+        isCountdown: Boolean = false
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -3082,7 +3250,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             imagePath = imagePath,
             originalText = originalText,
             timerAnchorMs = timerAnchorMs,
-            timerCountsDown = timerCountsDown
+            timerCountsDown = timerCountsDown,
+            countdownId = countdownId,
+            countdownDateStr = countdownDateStr
         )
         if (fingerprint == lastNotificationFingerprint[notificationId]) {
             return
@@ -3107,6 +3277,17 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setColorized(false)
             .setContentIntent(pendingIntent)
             .setAutoCancel(notificationId == COURSE_NOTIFICATION_ID)
+
+        if (isCountdown) {
+            builder.setDeleteIntent(
+                CountdownReminderStore.createDismissPendingIntent(
+                    context = this,
+                    notifId = notificationId,
+                    countdownId = countdownId,
+                    dateStr = countdownDateStr ?: ""
+                )
+            )
+        }
 
         val isCourseNotification = notificationId == COURSE_NOTIFICATION_ID
         val courseArrivalPendingIntent = if (isCourseNotification) {
@@ -3226,15 +3407,24 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         var actionPendingIntent: PendingIntent? = null
         if (isTodo && isOngoing) {
-            val actionIntent = Intent("com.math_quiz.MARK_DONE").apply {
-                setPackage(packageName)
-                putExtra("notificationId", notificationId)
+            actionPendingIntent = if (isCountdown) {
+                CountdownReminderStore.createCompletePendingIntent(
+                    context = this,
+                    notifId = notificationId,
+                    countdownId = countdownId,
+                    dateStr = countdownDateStr ?: ""
+                )
+            } else {
+                val actionIntent = Intent("com.math_quiz.MARK_DONE").apply {
+                    setPackage(packageName)
+                    putExtra("notificationId", notificationId)
+                }
+                // 使用 notificationId 作为 request code，避免多个通知的 PendingIntent 被合并
+                PendingIntent.getBroadcast(
+                    this, notificationId, actionIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             }
-            // 使用 notificationId 作为 request code，避免多个通知的 PendingIntent 被合并
-            actionPendingIntent = PendingIntent.getBroadcast(
-                this, notificationId, actionIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
 
             val nativeAction = NotificationCompat.Action.Builder(
                 IconCompat.createWithResource(this, R.drawable.ic_done),
@@ -3378,7 +3568,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 hyperBuilder.setIslandConfig(
                     priority = 2,
                     timeout = null,
-                    dismissible = if (isCourseNotification) true else !isOngoing,
+                    dismissible = if (isCourseNotification || isCountdown) true else !isOngoing,
                     needCloseAnimation = true
                 )
 

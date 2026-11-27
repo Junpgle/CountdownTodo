@@ -36,12 +36,13 @@ class AppStatusToast {
     late final OverlayEntry entry;
     entry = OverlayEntry(
       builder: (overlayContext) {
-        final mediaQuery = MediaQuery.of(overlayContext);
+        final screenWidth = MediaQuery.sizeOf(overlayContext).width;
         final right = anchorRect == null
             ? 16.0
-            : math.max(16.0, mediaQuery.size.width - anchorRect.right);
-        final top = anchorRect?.bottom ?? mediaQuery.padding.top + 12;
-        final availableWidth = mediaQuery.size.width - right - 16.0;
+            : math.max(16.0, screenWidth - anchorRect.right);
+        final top =
+            anchorRect?.bottom ?? MediaQuery.paddingOf(overlayContext).top + 12;
+        final availableWidth = screenWidth - right - 16.0;
         final maxWidth = availableWidth.clamp(160.0, 320.0).toDouble();
         return Positioned(
           top: top + 8,

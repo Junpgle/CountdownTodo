@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../utils/app_platform.dart';
 import 'notification_service.dart';
+import '../utils/json_value_parser.dart';
 
 /// Rendering workarounds for Android window modes that are not equivalent to
 /// a normal full-screen Flutter surface.
@@ -135,10 +136,5 @@ class AndroidWindowRenderingPolicy {
     return math.min(value, maxValue);
   }
 
-  static int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value);
-    return null;
-  }
+  static int? _readInt(dynamic value) => JsonValueParser.toNullableInt(value);
 }

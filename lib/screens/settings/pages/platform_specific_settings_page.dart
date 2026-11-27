@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../../utils/app_platform.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../../services/tai_service.dart';
 import '../../../storage_service.dart';
 import '../../../services/float_window_service.dart';
@@ -39,7 +40,8 @@ class PlatformSpecificSettingsPage extends StatefulWidget {
 }
 
 class _PlatformSpecificSettingsPageState
-    extends State<PlatformSpecificSettingsPage> {
+    extends State<PlatformSpecificSettingsPage>
+    with SettingsTargetHighlightMixin<PlatformSpecificSettingsPage> {
   static const platform = MethodChannel(
     'com.math_quiz.junpgle.com.math_quiz_app/notifications',
   );
@@ -63,9 +65,10 @@ class _PlatformSpecificSettingsPageState
     'mac_island_test': GlobalKey(),
   };
 
-  String? _highlightTarget;
-  Timer? _highlightTimer;
   Timer? _priorityRefreshTimer;
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   // Desktop Renderer (Windows & macOS)
   DesktopFlutterRenderer _desktopRenderer =
@@ -103,37 +106,14 @@ class _PlatformSpecificSettingsPageState
       platformChannel: platform,
     );
     _loadSettings();
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToTarget(widget.initialTarget!);
-      });
-    }
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   @override
   void dispose() {
-    _highlightTimer?.cancel();
     _priorityRefreshTimer?.cancel();
     _permissionCoordinator.dispose();
     super.dispose();
-  }
-
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    if (key?.currentContext != null) {
-      setState(() => _highlightTarget = target);
-      Scrollable.ensureVisible(
-        key!.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.15,
-      );
-      _highlightTimer?.cancel();
-      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-        _highlightTimer = null;
-        if (mounted) setState(() => _highlightTarget = null);
-      });
-    }
   }
 
   Future<void> _loadSettings() async {
@@ -293,7 +273,7 @@ class _PlatformSpecificSettingsPageState
   Widget _buildTile({required String targetId, required Widget child}) {
     return AppSettingsHighlightedTile(
       targetId: targetId,
-      highlightTarget: _highlightTarget,
+      highlightTarget: highlightTarget,
       itemKeys: _itemKeys,
       borderRadius: BorderRadius.zero,
       child: child,
@@ -326,7 +306,8 @@ class _PlatformSpecificSettingsPageState
       await DesktopRendererPreference.save(renderer);
       if (!mounted) return;
       setState(() => _desktopRenderer = renderer);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             AppPlatform.isMacOS
@@ -337,8 +318,10 @@ class _PlatformSpecificSettingsPageState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存渲染引擎失败：$error')));
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text('保存渲染引擎失败：$error')),
+      );
     } finally {
       if (mounted) setState(() => _desktopRendererSaving = false);
     }

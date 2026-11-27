@@ -9,8 +9,7 @@ import '../screens/plan_editor_drafts_screen.dart';
 import '../screens/plan_cleanup_screen.dart';
 
 import '../utils/app_dialogs.dart';
-
-import 'package:intl/intl.dart';
+import 'app_skeleton.dart';
 
 import 'dart:convert';
 
@@ -67,6 +66,8 @@ import 'todo_overdue_triage_banner.dart';
 import 'todo_overdue_triage_sheet.dart';
 import '../services/todo_completion_celebration_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/sync_error_formatter.dart';
+import 'todo_capture_edit_fields.dart';
 import 'todo_completion_celebration.dart';
 import 'todo_recurrence_delete_dialog.dart';
 
@@ -75,8 +76,12 @@ part 'todo_section_widget_lifecycle.dart';
 part 'todo_section_widget_capture.dart';
 part 'todo_section_widget_recurrence.dart';
 part 'todo_section_widget_view.dart';
+part 'todo_section_widget_view_card.dart';
+part 'todo_section_widget_view_model.dart';
 part 'todo_section_widget_independent_status.dart';
 part 'todo_edit_screen.dart';
+part 'todo_edit_screen_actions.dart';
+part 'todo_edit_screen_sections.dart';
 
 enum _TodoFolderDisplayMode { inline, separate, urgentFirst, hidden }
 
@@ -303,7 +308,6 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   final Map<String, Key> _todoDismissKeys = {};
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool _inlineFolders = true;
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   _TodoSectionViewModel? _cachedVm;
@@ -329,14 +333,6 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   List<Team> _teams = [];
   Set<String> _habitOnlyRecurringSeriesIds = <String>{};
 
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
-
   bool _isAiGeneratedTodo(TodoItem todo) => isAiGeneratedTodo(todo);
 }
 
@@ -345,6 +341,8 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
         _TodoSectionLifecycleMixin,
         _TodoSectionCaptureMixin,
         _TodoSectionRecurrenceMixin,
+        _TodoSectionViewCardMixin,
+        _TodoSectionViewModelMixin,
         _TodoSectionViewMixin {
   @visibleForTesting
   static List<TodoItem> collapseRecurrenceInstancesForDisplayForTest(

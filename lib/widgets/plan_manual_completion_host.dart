@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../services/plan_manual_completion_service.dart';
 import '../storage_service.dart';
+import '../utils/app_dialogs.dart';
 
 /// Keeps the short-lived receipt on its source page, never in global storage.
 class PlanManualCompletionHost extends StatefulWidget {
@@ -244,8 +245,10 @@ class PlanManualCompletionHostState extends State<PlanManualCompletionHost>
       if (!mounted || !_current(model)) return;
       _clear();
       widget.onRefresh();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已撤回手动完成')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已撤回手动完成')),
+      );
     } catch (error) {
       if (_current(model)) {
         model.update(() => model.error = '撤销未成功：${error.toString()}');

@@ -55,24 +55,13 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('移至回收站？'),
-        content: const Text('日记文字和照片会保留在本机，可随时从回收站恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('移至回收站'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '移至回收站？',
+      message: '日记文字和照片会保留在本机，可随时从回收站恢复。',
+      confirmLabel: '移至回收站',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       final moved = await _storage.moveEntryToTrash(
         _entry.id,
@@ -122,16 +111,24 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(AppTimeFormats.format(_entry.occurredAt, 'yyyy年MM月dd日')),
         actions: [
-          IconButton(
-            tooltip: '编辑',
-            onPressed: _edit,
-            icon: const Icon(Icons.edit_rounded),
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '编辑',
+                onPressed: _edit,
+                icon: const Icon(Icons.edit_rounded),
+              ),
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '移至回收站',
+                onPressed: _delete,
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: '移至回收站',
-            onPressed: _delete,
-            icon: const Icon(Icons.delete_outline_rounded),
-          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -141,50 +138,67 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 880),
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(20, topBarHeight + 12, 20, 48),
-                children: [
-                  Text(
-                    AppTimeFormats.format(
-                      _entry.occurredAt,
-                      'EEEE',
-                      locale: 'zh_CN',
-                    ),
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w800,
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(20, topBarHeight + 12, 20, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppTimeFormats.format(
+                              _entry.occurredAt,
+                              'EEEE',
+                              locale: 'zh_CN',
+                            ),
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _entry.title?.trim().isNotEmpty == true
+                                ? _entry.title!
+                                : '无题',
+                            style: theme.textTheme.displaySmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          if (_entry.content.trim().isNotEmpty) ...[
+                            const SizedBox(height: 24),
+                            Text(
+                              _entry.content,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                height: 1.75,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _entry.title?.trim().isNotEmpty == true
-                        ? _entry.title!
-                        : '无题',
-                    style: theme.textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1,
+                  if (_entry.attachments.isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                      sliver: _buildDetailGallerySliver(
+                        context,
+                        _entry.attachments,
+                        _openImage,
+                      ),
                     ),
-                  ),
-                  if (_entry.content.trim().isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    Text(
-                      _entry.content,
-                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.75),
-                    ),
-                  ],
-                  if (_entry.attachments.isNotEmpty) ...[
-                    const SizedBox(height: 28),
-                    _DetailGallery(
-                      attachments: _entry.attachments,
-                      onTap: _openImage,
-                    ),
-                  ],
-                  const SizedBox(height: 36),
-                  Center(
-                    child: Text(
-                      '记录于 ${AppTimeFormats.format(_entry.createdAt, 'yyyy年MM月dd日 HH:mm')}',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 36, 20, 48),
+                    sliver: SliverToBoxAdapter(
+                      child: Center(
+                        child: Text(
+                          '记录于 ${AppTimeFormats.format(_entry.createdAt, 'yyyy年MM月dd日 HH:mm')}',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -198,65 +212,53 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
   }
 }
 
-class _DetailGallery extends StatelessWidget {
-  final List<JournalAttachment> attachments;
-  final ValueChanged<int> onTap;
-
-  const _DetailGallery({required this.attachments, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final height = attachments.length == 1 ? 400.0 : 250.0;
-        return GridView.builder(
-          padding: EdgeInsets.zero,
-          primary: false,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          findChildIndexCallback: (Key key) {
-            if (key is ValueKey<String>) {
-              final id = key.value;
-              final idx = attachments.indexWhere((a) => a.id == id);
-              return idx != -1 ? idx : null;
-            }
-            return null;
-          },
-          itemCount: attachments.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: attachments.length == 1 ? 1 : 2,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            mainAxisExtent: height,
+Widget _buildDetailGallerySliver(
+  BuildContext context,
+  List<JournalAttachment> attachments,
+  ValueChanged<int> onTap,
+) {
+  final scheme = Theme.of(context).colorScheme;
+  final height = attachments.length == 1 ? 400.0 : 250.0;
+  return SliverGrid.builder(
+    findChildIndexCallback: (Key key) {
+      if (key is ValueKey<String>) {
+        final id = key.value;
+        final idx = attachments.indexWhere((a) => a.id == id);
+        return idx != -1 ? idx : null;
+      }
+      return null;
+    },
+    itemCount: attachments.length,
+    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: attachments.length == 1 ? 1 : 2,
+      crossAxisSpacing: 8,
+      mainAxisSpacing: 8,
+      mainAxisExtent: height,
+    ),
+    itemBuilder: (_, index) {
+      final attachment = attachments[index];
+      final provider = JournalMediaService.instance.provider(
+        attachment,
+        width: 800,
+        height: 800,
+      );
+      return RepaintBoundary(
+        key: ValueKey<String>(attachment.id),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: InkWell(
+            onTap: () => onTap(index),
+            child: provider == null
+                ? ColoredBox(
+                    color: scheme.surfaceContainerHighest,
+                    child: const Icon(Icons.broken_image_outlined),
+                  )
+                : Image(image: provider, fit: BoxFit.cover),
           ),
-          itemBuilder: (_, index) {
-            final attachment = attachments[index];
-            final provider = JournalMediaService.instance.provider(
-              attachment,
-              width: 800,
-              height: 800,
-            );
-            return RepaintBoundary(
-              key: ValueKey<String>(attachment.id),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: InkWell(
-                  onTap: () => onTap(index),
-                  child: provider == null
-                      ? ColoredBox(
-                          color: scheme.surfaceContainerHighest,
-                          child: const Icon(Icons.broken_image_outlined),
-                        )
-                      : Image(image: provider, fit: BoxFit.cover),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
 }
 
 class _JournalGalleryViewer extends StatefulWidget {

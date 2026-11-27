@@ -12,6 +12,7 @@ import 'plan_availability_preferences.dart';
 import 'plan_availability_repository.dart';
 import 'plan_availability_service.dart';
 import 'pomodoro_service.dart';
+import '../utils/calendar_date_math.dart';
 
 class PlanConflictOverlap {
   const PlanConflictOverlap(this.source, this.start, this.end);
@@ -112,7 +113,7 @@ class PlanConflictReviewService {
     required DateTime now,
     bool appOnly = false,
   }) {
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final todos = {for (final todo in data.todos) todo.id: todo};
     final byId = {for (final block in data.blocks) block.id: block};
     final entries = <PlanConflictEntry>[];
@@ -128,11 +129,7 @@ class PlanConflictReviewService {
       final seen = <String>{};
       for (final day in data.days) {
         if (day.date.isBefore(today)) continue;
-        final dayEnd = DateTime(
-          day.date.year,
-          day.date.month,
-          day.date.day + 1,
-        );
+        final dayEnd = AppTimeFormats.localDayStartOffset(day.date, 1);
         for (final source in day.busy) {
           if (source.source == PlanBusySource.planBlock &&
               source.id == block.id) {
@@ -239,7 +236,7 @@ class PlanConflictReviewService {
     final deadline = due == null
         ? null
         : todo.isDateOnly
-        ? DateTime(due.year, due.month, due.day + 1)
+        ? AppTimeFormats.localDayStartOffset(due, 1)
         : due;
     if (!allowFocusStatus && deadline != null && !deadline.isAfter(now)) {
       throw const PlanAvailabilityException('待办截止已过，请先调整截止再改期');
