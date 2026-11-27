@@ -100,6 +100,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
         builder: (context, selectedLayer, interactive) => Center(
           child: AiWaterRippleBorder(
             isLight: Theme.of(context).brightness == Brightness.light,
+            maxRepeats: 1,
             borderRadius: BorderRadius.circular(28),
             child: HomeBottomNavigationActionButton(
               buttonKey: selectedLayer ? null : addButtonKey,

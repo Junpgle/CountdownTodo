@@ -10,6 +10,7 @@ import 'dart:async';
 import '../widgets/home_dashboard_banner_layout.dart';
 import '../widgets/home_drawer_menu.dart';
 import '../widgets/ai_water_border.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/manual_sync_dialog.dart';
 
 import 'dart:math';

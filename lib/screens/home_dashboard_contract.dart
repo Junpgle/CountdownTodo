@@ -330,7 +330,9 @@ mixin _HomeDashboardContract {
 
   bool _isMapEqual(Map a, Map b);
 
-  Widget _buildDashboardSkeleton(bool isLight);
-
-  Widget _buildSkeletonCard(Color color, {required double height});
+  Widget _buildDashboardSkeleton(
+    bool isLight, {
+    double topPadding = 16,
+    bool isTablet = false,
+  });
 }

@@ -50,6 +50,28 @@ mixin _HomeDashboardViewActionsMixin
     });
   }
 
+  ImageProvider<Object> _sizedWallpaperProviderForViewport(
+    ImageProvider<Object> provider,
+    Size viewportSize,
+    double pixelRatio,
+  ) {
+    if (provider is ResizeImage) return provider;
+    final cacheWidth = (viewportSize.width * pixelRatio)
+        .round()
+        .clamp(1, 4096)
+        .toInt();
+    final cacheHeight = (viewportSize.height * pixelRatio)
+        .round()
+        .clamp(1, 4096)
+        .toInt();
+    return ResizeImage(
+      provider,
+      width: cacheWidth,
+      height: cacheHeight,
+      policy: ResizeImagePolicy.fit,
+    );
+  }
+
   Widget _buildWallpaperDisplay(ImageProvider<Object> provider) {
     Widget display(ImageProvider<Object> imageProvider) => Image(
       image: imageProvider,
@@ -73,21 +95,8 @@ mixin _HomeDashboardViewActionsMixin
       builder: (context) {
         final size = MediaQuery.sizeOf(context);
         final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-        final cacheWidth = (size.width * pixelRatio)
-            .round()
-            .clamp(1, 4096)
-            .toInt();
-        final cacheHeight = (size.height * pixelRatio)
-            .round()
-            .clamp(1, 4096)
-            .toInt();
         return display(
-          ResizeImage(
-            provider,
-            width: cacheWidth,
-            height: cacheHeight,
-            policy: ResizeImagePolicy.fit,
-          ),
+          _sizedWallpaperProviderForViewport(provider, size, pixelRatio),
         );
       },
     );
@@ -165,37 +174,77 @@ mixin _HomeDashboardViewActionsMixin
     required ImageProvider<Object>? localWallpaperProvider,
   }) {
     final fadeHeight = headerExtent + floatingGlassTopBarDefaultFadeTail;
+    Widget buildFallback(BuildContext context) {
+      final screenSize = MediaQuery.sizeOf(context);
+      return RepaintBoundary(
+        child: ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: _resolveWallpaperTopFadeShader,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minWidth: screenSize.width,
+              maxWidth: screenSize.width,
+              minHeight: screenSize.height,
+              maxHeight: screenSize.height,
+              child: _buildWallpaperWidget(
+                wallpaperUrl: wallpaperUrl,
+                localWallpaperProvider: localWallpaperProvider,
+                extractColor: false,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final ImageProvider<Object>? directBaseProvider =
+        wallpaperUrl.startsWith('assets/')
+        ? AssetImage(wallpaperUrl)
+        : localWallpaperProvider;
+
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
       height: fadeHeight,
       child: IgnorePointer(
-        child: RepaintBoundary(
-          child: Builder(
-            builder: (context) {
-              final screenSize = MediaQuery.sizeOf(context);
-              return ShaderMask(
-                blendMode: BlendMode.dstIn,
-                shaderCallback: _resolveWallpaperTopFadeShader,
-                child: ClipRect(
-                  child: OverflowBox(
-                    alignment: Alignment.topCenter,
-                    minWidth: screenSize.width,
-                    maxWidth: screenSize.width,
-                    minHeight: screenSize.height,
-                    maxHeight: screenSize.height,
-                    child: _buildWallpaperWidget(
-                      wallpaperUrl: wallpaperUrl,
-                      localWallpaperProvider: localWallpaperProvider,
-                      extractColor: false,
+        child: directBaseProvider != null
+            ? Builder(
+                builder: (context) {
+                  final size = MediaQuery.sizeOf(context);
+                  final dpr = MediaQuery.devicePixelRatioOf(context);
+                  return WallpaperTopFadeCap(
+                    imageProvider: _sizedWallpaperProviderForViewport(
+                      directBaseProvider,
+                      size,
+                      dpr,
                     ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+                    height: fadeHeight,
+                    dimFactor: 1.0 - (0x66 / 255.0),
+                    fallbackBuilder: buildFallback,
+                  );
+                },
+              )
+            : ValueListenableBuilder<ImageProvider<Object>?>(
+                valueListenable:
+                    _preblurredWallpaperController.activeProviderListenable,
+                builder: (context, activeProvider, _) {
+                  if (activeProvider == null) return buildFallback(context);
+                  final size = MediaQuery.sizeOf(context);
+                  final dpr = MediaQuery.devicePixelRatioOf(context);
+                  return WallpaperTopFadeCap(
+                    imageProvider: _sizedWallpaperProviderForViewport(
+                      activeProvider,
+                      size,
+                      dpr,
+                    ),
+                    height: fadeHeight,
+                    dimFactor: 1.0 - (0x66 / 255.0),
+                    fallbackBuilder: buildFallback,
+                  );
+                },
+              ),
       ),
     );
   }
@@ -1043,32 +1092,171 @@ mixin _HomeDashboardViewActionsMixin
     }
   }
 
-  Widget _buildDashboardSkeleton(bool isLight, {double topPadding = 16}) {
-    final baseColor = isLight
-        ? Colors.white.withValues(alpha: 0.3)
-        : Colors.grey[800]!;
-    return SingleChildScrollView(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
+  Widget _buildDashboardSkeleton(
+    bool isLight, {
+    double topPadding = 16,
+    bool isTablet = false,
+  }) {
+    Widget buildCountdownStrip() => AppSkeletonCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSkeletonCard(baseColor, height: 120),
-          const SizedBox(height: 16),
-          _buildSkeletonCard(baseColor, height: 180),
-          const SizedBox(height: 16),
-          _buildSkeletonCard(baseColor, height: 240),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              AppSkeletonLine(width: 84, height: 15),
+              AppSkeletonBox(width: 56, height: 22, borderRadius: 11),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: const [
+              Expanded(child: AppSkeletonBox(height: 82, borderRadius: 14)),
+              SizedBox(width: 12),
+              Expanded(child: AppSkeletonBox(height: 82, borderRadius: 14)),
+            ],
+          ),
         ],
       ),
     );
-  }
 
-  Widget _buildSkeletonCard(Color color, {required double height}) {
-    return Container(
-      width: double.infinity,
-      height: height,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(16),
+    Widget buildTodoSectionCard() => AppSkeletonCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              AppSkeletonLine(width: 96, height: 16),
+              AppSkeletonBox(width: 64, height: 24, borderRadius: 12),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < 4; i++) ...[
+            Row(
+              children: [
+                const AppSkeletonCircle(size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      FractionallySizedBox(
+                        widthFactor: i.isEven ? 0.7 : 0.56,
+                        child: const AppSkeletonLine(height: 14),
+                      ),
+                      const SizedBox(height: 6),
+                      const FractionallySizedBox(
+                        widthFactor: 0.38,
+                        child: AppSkeletonLine(height: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const AppSkeletonBox(width: 52, height: 22, borderRadius: 11),
+              ],
+            ),
+            if (i < 3) const SizedBox(height: 14),
+          ],
+        ],
+      ),
+    );
+
+    Widget buildOverviewCard() => AppSkeletonCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              AppSkeletonLine(width: 110, height: 15),
+              AppSkeletonBox(width: 58, height: 22, borderRadius: 11),
+            ],
+          ),
+          SizedBox(height: 14),
+          AppSkeletonBox(height: 76, borderRadius: 12),
+          SizedBox(height: 12),
+          AppSkeletonLine(width: 180, height: 12),
+        ],
+      ),
+    );
+
+    Widget body;
+    if (isTablet) {
+      body = LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.sizeOf(context).width;
+          final horizontalPadding = max(32.0, (availableWidth - 1400.0) / 2.0);
+          return SingleChildScrollView(
+            key: const ValueKey<String>('home-dashboard-tablet-skeleton'),
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              topPadding,
+              horizontalPadding,
+              116,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 10,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const AppSkeletonBox(height: 82, borderRadius: 18),
+                      const SizedBox(height: 24),
+                      buildCountdownStrip(),
+                      const SizedBox(height: 24),
+                      buildOverviewCard(),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 40),
+                Expanded(
+                  flex: 11,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      buildTodoSectionCard(),
+                      const SizedBox(height: 24),
+                      buildOverviewCard(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } else {
+      body = SingleChildScrollView(
+        key: const ValueKey<String>('home-dashboard-phone-skeleton'),
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(16, topPadding, 16, 100),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            buildCountdownStrip(),
+            const SizedBox(height: 16),
+            buildTodoSectionCard(),
+            const SizedBox(height: 16),
+            buildOverviewCard(),
+          ],
+        ),
+      );
+    }
+
+    return Semantics(
+      label: '加载中',
+      child: ExcludeSemantics(
+        child: AppSkeletonScope(isLightSurface: isLight, child: body),
       ),
     );
   }
