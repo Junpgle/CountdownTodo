@@ -166,7 +166,7 @@ extension _PomodoroStatsSections on PomodoroStatsState {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '今日全站人均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
+                          '近7日全站日均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
                           style: TextStyle(
                             fontSize: 12,
                             color: colorScheme.onSurfaceVariant,

@@ -673,7 +673,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     _buildMetricChip(
                       icon: Icons.groups_rounded,
                       label:
-                          '今日人均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
+                          '全站日均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
                       colorScheme: colorScheme,
                       isDark: isDark,
                     ),
@@ -1576,7 +1576,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               _buildMetricChip(
                 icon: Icons.groups_rounded,
                 label:
-                    '今日全站人均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
+                    '近7日全站日均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
                 colorScheme: colorScheme,
                 isDark: isDark,
               ),

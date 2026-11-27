@@ -629,7 +629,7 @@ String _pomoStatusStr(PomodoroRecordStatus s) {
   }
 }
 
-/// 获取今日全站人均专注统计（带 60 秒内存缓存；无数据或离线时返回 null）
+/// 获取近7日全站专注日均统计（带 60 秒内存缓存；无数据或离线时返回 null）
 Future<PomodoroCommunityStats?> _pomoGetTodayCommunityStats({
   bool forceRefresh = false,
   DateTime? now,

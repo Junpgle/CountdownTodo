@@ -190,7 +190,7 @@ class PomodoroService {
   static Future<void> updateSession(PomodoroRecord s) => _pomoUpdateRecord(s);
   static Future<void> deleteSession(String uuid) => _pomoDeleteRecord(uuid);
 
-  /// 获取今日全站人均专注统计（带 60 秒内存缓存；无数据或离线时返回 null）
+  /// 获取近7日全站专注日均统计（带 60 秒内存缓存；无数据或离线时返回 null）
   static Future<PomodoroCommunityStats?> getTodayCommunityStats({
     bool forceRefresh = false,
     DateTime? now,

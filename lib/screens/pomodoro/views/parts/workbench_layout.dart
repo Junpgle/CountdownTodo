@@ -555,7 +555,7 @@ extension _PomodoroWorkbenchLayoutExt on PomodoroWorkbenchState {
           Icon(Icons.groups_rounded, size: 14, color: colorScheme.primary),
           const SizedBox(width: 6),
           Text(
-            '今日全站人均专注 ${formatDurationChinese(stats.avgSeconds)}',
+            '近7日全站日均专注 ${formatDurationChinese(stats.avgSeconds)}',
             style: TextStyle(
               fontSize: 12,
               color: colorScheme.onSurfaceVariant,

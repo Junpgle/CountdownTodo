@@ -1031,7 +1031,7 @@ class PomodoroRunState {
   }
 }
 
-/// 今日全站专注人均统计
+/// 近7日全站专注日均统计
 class PomodoroCommunityStats {
   final int avgSeconds;
   final int totalSeconds;
