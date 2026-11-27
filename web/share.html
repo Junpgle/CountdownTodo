@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#6C63FF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a2e" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <title>团队分享 · CountDownTodo</title>
+  <script>
+    (function () {
+      function extractShareCodeFrom(raw) {
+        if (!raw) return null;
+        var clean = String(raw).trim();
+        if (clean.charAt(0) === '#') clean = clean.slice(1);
+        if (!clean) return null;
+        try {
+          var url = new URL(clean.charAt(0) === '/' ? clean : '/' + clean, window.location.origin);
+          var path = url.pathname.replace(/\/+$/, '');
+          if (path === '/share' || path.indexOf('/share/') === 0) {
+            var qCode = (url.searchParams.get('code') || '').trim();
+            if (qCode) return qCode;
+            var segs = path.split('/').filter(Boolean);
+            var idx = segs.lastIndexOf('share');
+            if (idx !== -1 && idx + 1 < segs.length) {
+              var segCode = decodeURIComponent(segs[idx + 1]).trim();
+              if (segCode) return segCode;
+            }
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      window.cdtShareApiBase = function () {
+        if (window.CDT_SHARE_API_BASE) return window.CDT_SHARE_API_BASE;
+        var host = window.location.hostname || '';
+        if (host === 'cdt.junpgle.me' ||
+            host.slice(-10) === '.pages.dev' ||
+            host === 'localhost' ||
+            host === '127.0.0.1') {
+          return 'https://api-cdt.junpgle.me';
+        }
+        return window.location.origin;
+      };
+
+      var code = extractShareCodeFrom(window.location.hash) ||
+        extractShareCodeFrom(window.location.pathname + window.location.search);
+      var apiBase = window.cdtShareApiBase();
+
+      var pre = document.createElement('link');
+      pre.rel = 'preconnect';
+      pre.href = apiBase;
+      pre.crossOrigin = '';
+      document.head.appendChild(pre);
+
+      if (code) {
+        window.cdtShareCode = code;
+        var tzOffset = new Date().getTimezoneOffset();
+        var prefetchUrl = apiBase + '/api/shares/' + encodeURIComponent(code) +
+          '/data?tz_offset=' + encodeURIComponent(String(tzOffset));
+        window.__cdtSharePrefetch = {
+          code: code,
+          url: prefetchUrl,
+          consumed: false,
+          promise: fetch(prefetchUrl, { method: 'GET' }).then(function (res) {
+            return res.json();
+          })
+        };
+      }
+
+      window.cdtOpenFullApp = function () {
+        var target = code
+          ? '/?full=1#/share?code=' + encodeURIComponent(code)
+          : '/';
+        window.location.href = target;
+      };
+    })();
+  </script>
+  <link rel="stylesheet" href="share-viewer.css?v=20261127a">
+  <script src="share-viewer.js?v=20261127a" defer></script>
+  <style>
+    body {
+      margin: 0;
+      background: #f6f6fc;
+      color: #1f1f2e;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #141422; color: #f3f3ff; }
+    }
+  </style>
+</head>
+<body>
+  <div id="share-root">
+    <div class="cdt-center-box">
+      <div class="cdt-card cdt-auth-card">
+        <div class="cdt-spinner"></div>
+        <h2>正在加载团队分享</h2>
+        <p>已启用并行轻量加载，无需等待完整应用资源</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

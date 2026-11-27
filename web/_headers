@@ -6,11 +6,14 @@
 /index.html
   Cache-Control: no-cache
 
+/share.html
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
+
 /share-viewer.css
-  Cache-Control: no-cache
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
 
 /share-viewer.js
-  Cache-Control: no-cache
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
 
 /flutter_bootstrap.js
   Cache-Control: no-cache

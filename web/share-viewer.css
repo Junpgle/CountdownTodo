@@ -400,6 +400,29 @@
   user-select: none;
 }
 
+.cdt-load-more-btn {
+  width: 100%;
+  margin-top: 10px;
+  height: 38px;
+  border: 1px solid var(--cdt-border);
+  border-radius: 11px;
+  background: var(--cdt-surface-alt);
+  color: var(--cdt-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cdt-load-more-btn:hover:not(:disabled) {
+  background: var(--cdt-primary-soft);
+}
+
+.cdt-load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .cdt-center-box {
   min-height: 100vh;
   display: flex;

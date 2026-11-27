@@ -792,7 +792,7 @@ class ApiService {
   static Future<Map<String, dynamic>?> fetchDeviceVersionStats() =>
       _apiSyncFetchDeviceVersionStats();
 
-  /// 获取今日全站番茄钟专注人均统计（若后端不支持或无数据则返回 null）
+  /// 获取近7日全站番茄钟专注日均统计（若后端不支持或无数据则返回 null）
   static Future<Map<String, dynamic>?> fetchPomodoroCommunityStats({
     required int fromMs,
     required int toMs,
@@ -969,7 +969,12 @@ class ApiService {
   static Future<Map<String, dynamic>> fetchShareData(
     String code, {
     String? token,
-  }) => _apiTeamFetchShareData(code, token: token);
+    bool includeHistory = false,
+  }) => _apiTeamFetchShareData(
+    code,
+    token: token,
+    includeHistory: includeHistory,
+  );
 
   static Future<Map<String, dynamic>> requestJoinViaShare({
     required String shareCode,

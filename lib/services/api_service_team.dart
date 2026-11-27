@@ -536,12 +536,17 @@ Future<Map<String, dynamic>> _apiTeamVerifyShareCode(
 Future<Map<String, dynamic>> _apiTeamFetchShareData(
   String code, {
   String? token,
+  bool includeHistory = false,
 }) async {
   try {
-    var url = '${ApiService._effectiveBaseUrl}/api/shares/$code/data';
-    if (token != null && token.isNotEmpty) {
-      url += '?token=${Uri.encodeComponent(token)}';
-    }
+    final tzOffsetMinutes = -DateTime.now().timeZoneOffset.inMinutes;
+    final params = <String, String>{
+      'tz_offset': tzOffsetMinutes.toString(),
+      if (token != null && token.isNotEmpty) 'token': token,
+      if (includeHistory) 'include_history': '1',
+    };
+    final query = Uri(queryParameters: params).query;
+    final url = '${ApiService._effectiveBaseUrl}/api/shares/$code/data?$query';
     final response = await ApiService._request('GET', url, includeAuth: false);
     return jsonDecode(response.body);
   } catch (e) {
